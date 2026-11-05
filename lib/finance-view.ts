@@ -1,0 +1,12 @@
+import {brl,today} from './money';
+export type ViewEvent={id:string;title:string;amount:number;paid_amount:number;category?:string;due_date:string;account_id:string;owner_id:string;status:string;kind:'income'|'expense';card_id?:string;settled_at?:string;auto_receipt_suppressed?:boolean};
+export type ViewAccount={id:string;name:string;owner_id:string;balance:number;is_primary:boolean;color?:string;account_type?:'checking'|'recurring'|'investment'};
+export const alphabetic=(a:string,b:string)=>a.localeCompare(b,'pt-BR',{sensitivity:'base',numeric:true});
+export function shiftDate(date:string,days:number){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)}
+export function checklist(events:ViewEvent[],month=today().slice(0,7),current=today()){
+ const rows=events.filter(e=>e.kind==='expense'&&e.status!=='cancelled'&&e.due_date.startsWith(month)).sort((a,b)=>a.due_date.localeCompare(b.due_date)||alphabetic(a.title,b.title));
+ return 'Despesas · '+month.split('-').reverse().join('/')+'\n'+(rows.length?rows.map(e=>{const paid=e.status==='settled',partial=Number(e.paid_amount)>0&&!paid;return `${paid?'☑':'☐'} ${e.due_date.slice(8)} · ${e.title.replace(/[\r\n]+/g,' ')} · ${brl(Number(e.amount))} · ${paid?'Pago':e.due_date<current?'Em atraso':'Pendente'}${partial?' (parcial: '+brl(Number(e.paid_amount))+')':''}`}).join('\n'):'Nenhuma despesa neste mês.');
+}
+export function dailyMovements(rows:{date:string;byAccount:Record<string,number>}[],events:{id?:string;due_date:string;amount:number;status:string;account_id:string}[],current=today()){
+ return rows.map(r=>{const internal=new Set(events.filter(e=>e.id?.endsWith('-to')&&e.account_id in r.byAccount&&events.some(out=>out.id===e.id?.slice(0,-3)&&out.account_id in r.byAccount)).flatMap(e=>[e.id,e.id?.slice(0,-3)]));const day=events.filter(e=>!internal.has(e.id)&&e.status==='pending'&&(e.due_date<current?current:e.due_date)===r.date&&e.account_id in r.byAccount);return {date:r.date,income:day.filter(e=>e.amount>0).reduce((s,e)=>s+Math.round(e.amount*100),0)/100,expense:day.filter(e=>e.amount<0).reduce((s,e)=>s-Math.round(e.amount*100),0)/100,deficit:Object.values(r.byAccount).some(v=>v<0)}}).filter(r=>r.income>0||r.expense>0);
+}

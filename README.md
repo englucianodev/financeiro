@@ -1,40 +1,51 @@
 # Finanças compartilhadas
 
-Aplicação Next.js + Supabase para receitas, despesas, contas, cartões e projeções por participante e grupo. O cabeçalho usa os primeiros nomes cadastrados, sem nomes fixos. Perfis antigos identificados por e-mail aparecem como “Participante”; informe seu nome em Mais → Seu nome.
+Aplicação Next.js + Supabase com cinco telas: **Início, Pendências, Calendário, Contas e Mais**. Navegação, sessão e preferências persistem ao atualizar na mesma aba, por participante.
 
-## Executar
+## Execução e implantação
 
-1. Use Node.js 20.9+ e execute `npm ci`.
-2. Copie `.env.example` para `.env.local`. Informe `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` (chave pública/publishable ou anon; nunca service_role).
-3. Prepare o banco conforme instruções abaixo.
-4. Configure autenticação por e-mail no Supabase e execute `npm run dev`.
+1. Node.js 20.9+; execute `npm ci`.
+2. Copie `.env.example` para `.env.local` com URL do Supabase e chave pública/anon/publishable. Nunca use `service_role` em `NEXT_PUBLIC_*`.
+3. Configure Supabase Auth com Site URL e redirecionamentos do domínio.
+4. **Banco com migrations 001–009:** revise e aplique somente `010_accounts_and_receipts.sql`. Se houver etapas anteriores pendentes, aplique-as primeiro, em ordem. Faça backup antes de atualizar banco publicado.
+5. **Banco sem estrutura do aplicativo:** use `supabase/setup.sql` (001–010 em transação, com proteção contra instalação sobre tabelas existentes). Nunca use o instalador para atualizar banco existente.
+6. Execute `npm run dev` ou publique na Vercel com preset Next.js, diretório contendo `package.json`, build `npm run build` e saída automática. Informe as duas variáveis públicas antes do deploy.
 
-## Banco e atualização
+Nenhuma migration foi aplicada remotamente nesta implementação. A homologação no Supabase hospedado e o deploy na Vercel continuam necessários.
 
-- **Banco existente com migrations 001–007:** revise e execute `008_modernization.sql`, depois `009_scheduled_transfers.sql` no SQL Editor do Supabase ligado à Vercel. Faça backup antes de atualizar o ambiente publicado.
-- **Banco novo:** execute `supabase/setup.sql`, que reúne 001–009 em uma transação. O script recusa instalar sobre estrutura existente. Nunca remova essa proteção para atualizar um banco.
-- A migration 008 adiciona cores, categorias, recorrências, perfil e novos convites; a 009 adiciona transferências agendadas. Elas não apagam tabelas nem lançamentos.
-- Convites antigos continuam aceitos pelo novo endpoint até sua expiração, uso ou revogação. Os endpoints antigos de convite ficam desabilitados para evitar contornar revogação e limites de tentativas. Atualize também o frontend.
-- A API solicita atualização do cache ao terminar as migrations. Se necessário, execute `NOTIFY pgrst, 'reload schema';`.
+## Recebimentos automáticos
 
-## Funcionalidades
+Receitas pendentes com vencimento até hoje são confirmadas automaticamente, pelo saldo restante, na conta prevista. Isso inclui receitas antigas atrasadas; revise as previsões antes de habilitar em produção. O worker usa a data de Fortaleza, bloqueio de cada lançamento e chave única no ledger para impedir crédito duplicado.
 
-- Dashboard mobile com saldos real/projetado, receitas/despesas previstas, pendências prioritárias, resumo da semana, gráficos por conta e navegação inferior com ações rápidas.
-- Tema claro/escuro, ícones Lucide, animações Motion, componente Button no padrão shadcn/ui e gráficos Recharts. Inclinação 3D discreta em contas somente com mouse; preferência por movimento reduzido respeitada.
-- Nome dinâmico para qualquer quantidade de participantes. Conta principal sugerida conforme responsável e escolha manual preservada.
-- Cores personalizadas salvas por conta e usadas em cartões, lançamentos, calendário, projeção e simulador.
-- Cadastro específico de salário com dia de pagamento, início, fim opcional e previsões mensais. Meses curtos limitam o dia ao último disponível.
-- Receitas/despesas avulsas, semanais, mensais, bimestrais, trimestrais, semestrais, anuais ou com intervalo personalizado em dias. Receitas não exigem imóvel; despesas mantêm vínculo opcional. Vínculos históricos foram preservados.
-- Edição individual e atualização de valores futuros ainda não pagos, preservando confirmações. Despesas variáveis usam o último valor integralmente confirmado para estimar ocorrências futuras sem pagamentos.
-- Categorias predefinidas e categorias personalizadas com ícone, cor, edição e desativação. Desativar ou renomear não apaga movimentações e não reescreve rótulos históricos.
-- Projeção em seis blocos de 30 dias, de hoje até o 180º dia. Saldos acumulados nunca reiniciam entre blocos. Pendências atrasadas entram hoje.
-- Calendário mensal com painel de todas as movimentações do dia; descrições compactas no desktop e indicadores no celular.
-- Simulador até uma data, limitado a 365 dias, com saldo inicial, receitas, despesas, saldo final, gráfico, mínimos e resultados por conta/participante. Usa o mesmo motor do dashboard. Cenários hipotéticos ficam apenas em memória.
-- Transferências imediatas e agendadas. Agendar não movimenta saldo real; a confirmação manual na data ou depois efetiva a operação. A projeção considera os dois lados sem alterar o consolidado.
-- Cartões e compras parceladas, faturas, pagamentos integrais/parciais com conta/data/valor efetivos, estorno e auditoria por ledger. Compras e previsões não alteram saldo real.
-- Convites aleatórios ou personalizados (8–64 letras/números/hífens), hash no banco, expiração de 1–168 horas, uso único, copiar/compartilhar e revogação. Entrar exige autenticação; dez tentativas inválidas por usuário/hora bloqueiam novas tentativas nessa janela. Sem limite fixo de dois participantes no novo fluxo.
+Com o app aberto, a conciliação roda ao carregar, voltar ao primeiro plano e a cada minuto visível. Para executar também com o celular/app fechado:
 
-## Testes
+1. Habilite **Supabase Cron / pg_cron** em Integrations → Cron.
+2. Depois da migration 010, execute `supabase/enable_income_cron.sql` como proprietário do banco no SQL Editor.
+3. Verifique as execuções do job `finance-confirm-income` no painel Cron. O job chama o worker privado a cada cinco minutos; ele não é exposto aos usuários da API.
+
+Referência: [Supabase Cron](https://supabase.com/docs/guides/cron/quickstart).
+
+“Corrigir recebimento” altera valor/data com estorno e novo lançamento dentro de uma única transação, preservando o histórico. A correção permite datas até hoje. Estornar uma receita interrompe a confirmação automática dessa ocorrência; ela pode ser recebida manualmente depois, sem o cron desfazer o estorno.
+
+## Organização das telas
+
+- **Início:** saldo disponível sem contas de investimento, saldos separados de uso diário e despesas recorrentes; investimentos em menor destaque. Resumo de pagas/recebidas/atrasadas dos últimos cinco dias, anteriores em lista rolável, filtros, barras de entradas/saídas previstas e projeção por conta até uma data escolhida (até 365 dias).
+- **Pendências:** próximos sete dias; filtro de atrasadas e filtros por nome/categoria, entrada/saída e mês. Outros dias ficam em lista rolável expansível. Checklist do mês vigente disponível para copiar, baixar como TXT ou abrir o compartilhamento nativo e selecionar Telegram. O usuário escolhe a conversa e confirma o envio; nenhum bot ou credencial do Telegram é necessário.
+- **Calendário:** quadros maiores, descrições sem valores, indicação de confirmação e painel com todos os compromissos do dia. Investimentos e transferências preservam identificação das contas.
+- **Contas:** adicionar/editar nome, titular, finalidade, cor, saldo e preferência de conta principal. A opção de principal aparece somente no formulário. Ajustes de saldo são auditados. Conta com histórico, cartão ou transferência preserva o titular; crie outra conta para outra pessoa.
+- **Mais:** opções internas de Lançamentos, Transferências, Planejamento, Histórico e Personalização. Cada opção exibe somente seus formulários. Planejamento reúne fluxo de caixa, cartões, patrimônio, relatórios e simulador; Personalização reúne categorias, nomes e convites.
+
+Categorias são ordenadas alfabeticamente em português em cadastros, filtros e relatórios. Novas previsões exigem conta ativa do próprio responsável no frontend e no servidor. Pagamentos podem manter conta efetiva diferente da prevista, preservando o histórico.
+
+As barras financeiras agregam previsões por dia, exibem apenas dias com movimentações e destacam déficit em qualquer conta disponível. Transferências internas entre contas disponíveis não viram receita/despesa no gráfico. Transferências entre conta disponível e investimento alteram somente a disponibilidade, sem duplicar o patrimônio.
+
+## Funcionalidades preservadas
+
+Nomes dinâmicos, tema claro/escuro, navegação acessível, animações e efeitos 3D leves com respeito a movimento reduzido. Conta principal sugerida conforme responsável. Salários e recorrências semanais, mensais, bimestrais, trimestrais, semestrais, anuais e intervalo em dias; edição individual/futura, variável estimado pelo último confirmado; cartão parcelado, pagamentos parciais, estorno e ledger. Categorias personalizadas com ícone/cor e desativação, convites com hash, uso único, expiração, revogação e limite de tentativas, grupos com mais de duas pessoas.
+
+O simulador usa o mesmo motor de projeção, até uma data, com cenários hipotéticos em memória. Agendar transferências não altera o saldo real: confirmação manual efetiva os dois lados. Perfis antigos com e-mail aparecem como “Participante”; informe seu nome em Mais → Seu nome.
+
+## Verificação
 
 ```sh
 npm run typecheck
@@ -45,17 +56,10 @@ npm run test:e2e
 npm run build
 ```
 
-Banco testado em PostgreSQL embarcado PGlite, com RLS, RPCs, isolamento entre famílias, preservação de legado, salários/recorrências, meses curtos, valores variáveis, categorias, convites e transferências. Playwright usa API simulada, sessão em cookie e Edge no Windows; em outros sistemas instale Chromium (`npx playwright install chromium`). Porta de teste: 3100.
+Banco: PostgreSQL embarcado PGlite, migrations 001–010, RLS/RPCs, isolamento, preservação de legado, idempotência, edição auditada e recebimentos automáticos/correções. Playwright: API simulada e Edge no Windows; em outros sistemas instale Chromium. Testes locais não comprovam concorrência com múltiplas conexões nem a configuração remota do Cron.
 
-## Vercel
+## Limites
 
-Importe o repositório Git, use preset Next.js e a pasta que contém `package.json` como Root Directory. Build: `npm run build`; saída automática. Configure as duas variáveis públicas antes do deploy. Ajuste Site URL e redirecionamentos do Supabase Auth para o domínio publicado. Publique o código junto das migrations e teste login, criação/convite, recebimento, pagamento, estorno e transferência em homologação.
+Recorrências sem término geram um ano, sem renovação automática do lote; com término, limite de cinco anos e 2.000 ocorrências. Relatórios por competência (vencimento), sem conciliação, paginação, exportação de relatórios ou reserva mínima configurável. O checklist é uma exportação textual específica das despesas do mês, independente dos filtros da tela.
 
-## Limites atuais
-
-- Recorrências sem término geram um ano de previsões; não há renovação automática em background. Com término, o limite é cinco anos e 2.000 ocorrências por cadastro. Personalizada significa intervalo em dias.
-- Relatórios usam vencimento (competência); não substituem extrato por data/conta efetiva. O calendário não reconstrói saldos anteriores a hoje.
-- Investimentos e imóveis continuam informativos. Investimentos não entram no saldo bancário; registre o resgate ao recebê-lo para evitar dupla contagem.
-- Ainda não há conciliação, paginação, reserva mínima configurável ou exportação de relatórios. Faturas variam pelas compras cadastradas; ajustes devem corresponder a compras reais, sem criar outra despesa da mesma fatura.
-- Testes locais não substituem homologação com autenticação real e concorrência entre conexões no Supabase hospedado.
-- Esta modernização não executou migrations em dados reais nem publicou na Vercel.
+Cadastros de investimentos continuam informativos e são apresentados separados das contas de investimento: não se somam os dois valores como se fossem patrimônio independente. O saldo bancário das contas classificadas como investimento fica fora do disponível e da projeção de caixa. Cron offline exige configuração explícita no Supabase, e permanece pendente de homologação no ambiente publicado.

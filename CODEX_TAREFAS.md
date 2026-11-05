@@ -1,20 +1,23 @@
-# Continuidade — modernização visual e funcional
+# Continuidade — abas e operação financeira
 
-## Entregue no código local
+## Implementado localmente
 
-- Dashboard mobile, nome dinâmico, cartões, cores, gráficos, animações leves e navegação inferior.
-- Salários, recorrências por intervalos, categorias editáveis e desativáveis, valores variáveis, edição de futuros pendentes.
-- Projeções acumuladas em seis períodos de 30 dias; simulador até uma data com o mesmo motor.
-- Calendário com valores/descrições e painel diário; transferências agendadas na projeção e calendário.
-- Convites personalizados, expiração, hash, uso único, revogação e limite de tentativas; grupos com mais de duas pessoas.
-- Migrations aditivas `008_modernization.sql` e `009_scheduled_transfers.sql`; `setup.sql` atualizado para instalações novas.
+- Cinco telas: Início, Pendências, Calendário, Contas, Mais. A aba Mais tem opções internas separadas de Lançamentos, Transferências, Planejamento, Histórico e Personalização. Conteúdo separado visualmente, com navegação acessível e restauração de sessão/aba/período/data/rolagem.
+- Contas editáveis: finalidade (uso diário, recorrentes, investimentos), nome, cor, saldo e principal no formulário. Ajuste de saldo via ledger; preservação do titular em contas com histórico.
+- Só contas do responsável para novos lançamentos, com validação no servidor e frontend; históricos existentes preservados.
+- Investimentos fora do saldo disponível/projeção de caixa, apresentados com menor destaque e separados do cadastro informativo de investimentos.
+- Pendências dos próximos sete dias, outros dias roláveis, filtros de nome/categoria/tipo/atraso/mês, checklist textual do mês vigente para copiar, baixar e compartilhar pelo seletor do aparelho.
+- Resumo de pagas/recebidas/atrasadas nos últimos cinco dias com anteriores roláveis e filtros.
+- Categorias ordenadas alfabeticamente, calendário ampliado (três colunas no celular) só com compromissos sem valores, gráficos de barras de entradas/saídas por dia com déficit e sem contar transferências internas como receita/despesa.
+- Projeção por conta com data final configurável e persistida.
+- Recebimentos automáticos idempotentes, correção de valor/data com estorno e novo lançamento atômicos. Worker privado e bloqueio de reconfirmação após estorno manual.
 
-## Validação
+## Para publicar
 
-TypeScript, testes financeiros e de nomes, testes de banco (migrations 001–009, RLS/RPCs), instalador e dez testes Playwright passaram. Build de produção passou. Captura mobile em 390px inspecionada, sem rolagem horizontal.
+Aplicar migrations pendentes em ordem, incluindo `010_accounts_and_receipts.sql`, e atualizar frontend na Vercel. Não usar `setup.sql` sobre banco existente; ele é apenas para instalação nova. Nenhum dado real foi alterado nesta tarefa.
 
-## Implantação pendente
+Para confirmar receitas mesmo com o app fechado, habilitar pg_cron no Supabase e executar `supabase/enable_income_cron.sql`. Sem esse job, o app confirma ao abrir/retornar ao primeiro plano e a cada minuto visível. O worker inclui receitas pendentes com vencimento até hoje; revisar previsões antigas antes de habilitar em produção.
 
-Nenhuma alteração em dados reais ou deploy foi realizada. Aplicar somente migrations pendentes em Supabase de homologação, testar com autenticação real e depois publicar o frontend na Vercel. Confira se o projeto Supabase das variáveis da Vercel é o correto: o diagnóstico anterior de `nossascoisinhas.vercel.app` retornou PGRST205 para `household_members`.
+## Verificação
 
-Consulte o README para procedimentos e limites: recorrências finitas (um ano sem término), sem renovação automática em background, relatórios por competência, sem conciliação/paginação/exportação/reserva mínima e investimentos informativos.
+TypeScript, testes de projeção/nomes/checklist/barras, banco PGlite (001–010 e RLS/RPCs), instalador e 14 testes de navegador passaram no código local. Captura do calendário em 390px inspecionada, sem rolagem horizontal. Job Cron e autenticação real ainda precisam de homologação no Supabase hospedado. Consulte README para procedimentos e limitações das recorrências, relatórios e investimentos.
