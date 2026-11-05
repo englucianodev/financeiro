@@ -1,3 +1,12 @@
+## Correção posterior — login e núcleo familiar
+
+- Corrigido tratamento de objetos de erro Supabase em `lib/errors.ts`, aplicado nas telas principais e de planejamento.
+- A consulta de vínculo familiar tem estados de carregamento, sucesso e falha; uma falha não oferece criar uma nova família.
+- Diagnóstico remoto sem leitura de registros: API retornou PGRST205 para `public.household_members`. Confirmar projeto Supabase da Vercel e preparar estrutura/cache.
+- Preparado `supabase/setup.sql` para instalação inicial, transacional e com bloqueio se já houver estrutura. Não executado remotamente.
+- TypeScript, sete testes E2E, banco e build passaram; instalador validado com `node tests/setup.mjs`.
+- Pendente: aplicar estrutura/cache no Supabase correto e publicar o código na Vercel.
+
 # Continuidade — 05/11/2026
 
 ## Ponto recuperado

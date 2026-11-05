@@ -4,6 +4,8 @@ import {useEffect,useMemo,useState,useRef} from "react";
 
 import Planning from "@/components/planning";
 
+import {errorMessage} from "@/lib/errors";
+
 import {supabase} from "@/lib/supabase";
 
 import {brl,project,today,transferSuggestions} from "@/lib/money";
@@ -24,6 +26,7 @@ function FinanceApp(){
  useEffect(()=>{const value=localStorage.getItem("financas-theme")==="dark";setDark(value);document.documentElement.classList.toggle("dark",value)},[]);
  const [user,setUser]=useState<User|null>(null),[email,setEmail]=useState(""),[password,setPassword]=useState("");
 
+ const [membershipStatus,setMembershipStatus]=useState<"loading"|"ready"|"error">("loading");
  const [household,setHousehold]=useState<string|null>(null),[members,setMembers]=useState<Member[]>([]);
 
  const [accounts,setAccounts]=useState<Account[]>([]),[events,setEvents]=useState<Event[]>([]);
@@ -49,12 +52,13 @@ function FinanceApp(){
   const version=++loadVersion.current;
   if(activeUser.current!==u.id)return;
 
+  try {
   const {data:member,error:me}=await db.from("household_members").select("household_id").eq("user_id",u.id).limit(1).maybeSingle();
 
   if(version!==loadVersion.current||activeUser.current!==u.id)return;
-  if(me){setError(me.message);return}
+  if(me)throw me;
 
-  const h=member?.household_id??null;setHousehold(h);
+  const h=member?.household_id??null;setHousehold(h);setMembershipStatus("ready");
 
   if(!h)return;
 
@@ -78,6 +82,10 @@ function FinanceApp(){
   const propertyResult=await db.from("properties").select("id,name").eq("household_id",h);if(version!==loadVersion.current||activeUser.current!==u.id)return;setProperties(propertyResult.data??[]);
 
   setOwner(v=>v||u.id);
+  } catch(error) {
+   if(version!==loadVersion.current||activeUser.current!==u.id)return;
+   setError(errorMessage(error));setMembershipStatus("error");
+  }
 
  }
 
@@ -85,7 +93,7 @@ function FinanceApp(){
   let mounted=true;
   db.auth.getUser().then(({data,error})=>{if(!mounted)return;if(error){setError(error.message);return}activeUser.current=data.user?.id??null;setUser(data.user);if(data.user)void load(data.user)});
   const {data:listener}=db.auth.onAuthStateChange((_event,session)=>{
-   const next=session?.user??null;if(activeUser.current!==next?.id){activeUser.current=next?.id??null;loadVersion.current++;setHousehold(null);setAccounts([]);setEvents([]);setMembers([]);setOwner("");setAccount("");setInvite("");setPayment(null);setEditing(null);retryKeys.current.clear();if(next)setTimeout(()=>{if(mounted)void load(next)},0)}setUser(next);
+   const next=session?.user??null;if(activeUser.current!==next?.id){activeUser.current=next?.id??null;loadVersion.current++;setHousehold(null);setMembershipStatus("loading");setError("");setProperties([]);setAccounts([]);setEvents([]);setMembers([]);setOwner("");setAccount("");setInvite("");setPayment(null);setEditing(null);retryKeys.current.clear();if(next)setTimeout(()=>{if(mounted)void load(next)},0)}setUser(next);
   });
   return ()=>{mounted=false;loadVersion.current++;listener.subscription.unsubscribe()}
  },[db]);
@@ -98,7 +106,7 @@ function FinanceApp(){
  const suggestions=transferSuggestions(accounts,projection);
  const deficit=projection.find(p=>Object.values(p.byAccount).some(v=>v<0));
 
- async function act(fn:()=>Promise<void>){setBusy(true);setError("");try{await fn()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}}
+ async function act(fn:()=>Promise<void>){setBusy(true);setError("");try{await fn()}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
 
  async function login(signup:boolean){await act(async()=>{const r=signup?await db.auth.signUp({email,password}):await db.auth.signInWithPassword({email,password});if(r.error)throw r.error;if(signup)alert("Cadastro solicitado. Verifique seu e-mail caso a confirmação esteja ativada.");if(r.data.session&&r.data.user){activeUser.current=r.data.user.id;setUser(r.data.user);await load(r.data.user)}})}
 
@@ -126,9 +134,11 @@ function FinanceApp(){
 
  async function inviteMember(){if(!user)return;await act(async()=>{const {error}=await db.rpc("join_household",{p_code:invite.trim(),p_display_name:user.email??"Usuário"});if(error)throw error;await load(user)})}
 
- if(!user)return <main className="max-w-md mx-auto p-8 mt-16 card space-y-4"><h1 className="text-2xl font-bold">Finanças a Dois</h1><p>Entre com seu e-mail e senha.</p><input placeholder="E-mail" type="email" value={email} onChange={e=>setEmail(e.target.value)}/><input placeholder="Senha" type="password" value={password} onChange={e=>setPassword(e.target.value)}/><div className="flex gap-2"><button disabled={busy} onClick={()=>login(false)}>Entrar</button><button disabled={busy} onClick={()=>login(true)}>Criar conta</button></div>{error&&<p className="text-red-700">{error}</p>}</main>;
+ if(!user)return <main className="max-w-md mx-auto p-8 mt-16 card space-y-4"><h1 className="text-2xl font-bold">Finanças a Dois</h1><p>Entre com seu e-mail e senha.</p><input placeholder="E-mail" type="email" value={email} onChange={e=>setEmail(e.target.value)}/><input placeholder="Senha" type="password" value={password} onChange={e=>setPassword(e.target.value)}/><div className="flex gap-2"><button disabled={busy} onClick={()=>login(false)}>Entrar</button><button disabled={busy} onClick={()=>login(true)}>Criar conta</button></div>{error&&<p role="alert" className="text-red-700">{error}</p>}</main>;
 
- if(!household)return <main className="max-w-lg mx-auto p-8 space-y-5"><h1 className="text-2xl font-bold">Bem-vindo!</h1><div className="card space-y-3"><p>Crie seu núcleo familiar:</p><button onClick={createHousehold} disabled={busy}>Criar família</button></div><div className="card space-y-3"><p>Ou entre usando o código compartilhado pelo parceiro:</p><input placeholder="Código de convite" value={invite} onChange={e=>setInvite(e.target.value)}/><button disabled={busy} onClick={inviteMember}>Entrar na família</button></div>{error&&<p className="text-red-700">{error}</p>}</main>;
+ if(membershipStatus!=="ready")return <main className="max-w-lg mx-auto p-8 space-y-5" aria-live="polite"><h1 className="text-2xl font-bold">Finanças a Dois</h1>{membershipStatus==="loading"?<p>Carregando sua família…</p>:<><p role="alert">Não foi possível consultar seu núcleo familiar. {error}</p><button disabled={busy} onClick={()=>act(async()=>{setMembershipStatus("loading");await load(user)})}>Tentar novamente</button><button onClick={()=>db.auth.signOut()}>Sair</button></>}</main>;
+
+ if(!household)return <main className="max-w-lg mx-auto p-8 space-y-5"><h1 className="text-2xl font-bold">Bem-vindo!</h1><div className="card space-y-3"><p>Crie seu núcleo familiar:</p><button onClick={createHousehold} disabled={busy}>Criar família</button></div><div className="card space-y-3"><p>Ou entre usando o código compartilhado pelo parceiro:</p><input placeholder="Código de convite" value={invite} onChange={e=>setInvite(e.target.value)}/><button disabled={busy} onClick={inviteMember}>Entrar na família</button></div>{error&&<p role="alert" className="text-red-700">{error}</p>}</main>;
 
  return <main className="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
 

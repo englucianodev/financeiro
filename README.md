@@ -61,3 +61,19 @@ Validação local em 05/11/2026: TypeScript, cálculos financeiros, banco, três
 - A auditoria cobre lançamentos e movimentações; não existe ainda interface de consulta completa ao ledger ou auditoria de todos os cadastros.
 
 Consulte `CODEX_TAREFAS.md` para o ponto de continuidade.
+
+## Correção de login/criação de família no ambiente publicado
+
+A API pública utilizada por `nossascoisinhas.vercel.app` respondeu `PGRST205` ao consultar somente a estrutura de `household_members`, sem ler registros: a tabela `public.household_members` não estava disponível no cache de esquema. Verifique se as variáveis da Vercel apontam para o projeto Supabase correto e se as migrations foram aplicadas nesse projeto.
+
+Para um banco sem estrutura do aplicativo, abra `supabase/setup.sql`, copie o conteúdo inteiro para uma nova consulta no SQL Editor do Supabase correto e execute. O script reúne as migrations 001–007 em uma transação e solicita a atualização do cache da API. Ele recusa executar se encontrar tabelas existentes do aplicativo, sem apagar dados. Se essa proteção for acionada, aplique somente as migrations pendentes; não remova a proteção.
+
+Se as tabelas já existem e todas as migrations foram aplicadas, atualize somente o cache no SQL Editor:
+
+```sql
+NOTIFY pgrst, 'reload schema';
+```
+
+Publique também o código corrigido na Vercel. A interface passa a mostrar erros legíveis do Supabase e separa falha de consulta de usuário realmente sem família. Não publique senhas nem chaves privadas. O banco remoto não foi alterado por esta correção.
+
+Verificação adicional do instalador: `node tests/setup.mjs`. Foram validados sete testes de navegador, build de produção, instalação inicial, criação autenticada de família e recusa de reinstalação preservando dados.

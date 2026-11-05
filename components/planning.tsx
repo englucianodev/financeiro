@@ -1,6 +1,7 @@
 "use client";
 import {useEffect,useMemo,useState,useRef} from 'react';
 import type {SupabaseClient} from '@supabase/supabase-js';
+import {errorMessage} from '@/lib/errors';
 import {brl,project,today} from '@/lib/money';
 type Account={id:string;name:string;owner_id:string;balance:number};
 type Member={user_id:string;display_name:string};
@@ -19,8 +20,8 @@ export default function Planning({db,household,accounts,members,events,reload}:{
  const [from,setFrom]=useState(today().slice(0,7)+'-01'),[to,setTo]=useState(today().slice(0,4)+'-12-31');
  const [scenarios,setScenarios]=useState<{id:string;title:string;account_id:string;amount:number;due_date:string;status:string}[]>([]);
  async function loadAssets(){const results=await Promise.all([db.from('properties').select('*').eq('household_id',household),db.from('investments').select('*').eq('household_id',household),db.from('credit_cards').select('*').eq('household_id',household)]);for(const r of results)if(r.error)throw r.error;setProperties(results[0].data??[]);setInvestments(results[1].data??[]);setCards(results[2].data??[]);}
- useEffect(()=>{loadAssets().catch(e=>setError(e.message))},[household,db]);
- async function run(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn();await loadAssets();await reload()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}}
+ useEffect(()=>{loadAssets().catch(e=>setError(errorMessage(e)))},[household,db]);
+ async function run(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn();await loadAssets();await reload()}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
  async function insert(table:string,data:object){const {error}=await db.from(table).insert({...data,household_id:household});if(error)throw error;}
  const options=accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>);
  const people=members.map(m=><option key={m.user_id} value={m.user_id}>{m.display_name}</option>);
