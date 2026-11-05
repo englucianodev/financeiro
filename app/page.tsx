@@ -4,24 +4,25 @@ import {useEffect,useMemo,useState,useRef} from "react";
 
 import {Wallet,Plus,Home as HomeIcon,CalendarDays,ListChecks,Settings} from "lucide-react";
 import {firstName,familyTitle} from "@/lib/identity";
-import {Metrics,CashFlowChart,PeriodNav,AccountMark} from "@/components/finance-visuals";
+import {Metrics} from "@/components/finance-visuals";
 import MovementList from "@/components/movement-list";
+import MonthlyOverview from "@/components/monthly-overview";
 import EventEditor from "@/components/event-editor";
 import type {PropertyRecord} from "@/components/properties-panel";
 import LoginPanel from "@/components/login-panel";
 import AccountsPanel from "@/components/accounts-panel";
-import {dailyMovements,shiftDate,propertyEquity,type ViewAccount,type ViewEvent} from "@/lib/finance-view";
+import {propertyEquity,type ViewAccount,type ViewEvent} from "@/lib/finance-view";
 import EntryForm from "@/components/entry-form";
 import Preferences,{type Category} from "@/components/preferences";
 import Planning from "@/components/planning";
 
 import {errorMessage} from "@/lib/errors";
 
-import {useViewState,validPeriod,validDate,usePagePosition} from "@/lib/use-view-state";
+import {useViewState,usePagePosition} from "@/lib/use-view-state";
 
 import {supabase} from "@/lib/supabase";
 
-import {brl,project,today,transferSuggestions,transferFlows,type ScheduledTransfer} from "@/lib/money";
+import {brl,project,today,transferFlows,type ScheduledTransfer} from "@/lib/money";
 
 import type {User} from "@supabase/supabase-js";
 
@@ -32,7 +33,6 @@ type Event=ViewEvent;
 type Member={user_id:string;display_name:string};
 
 const tabs=[{id:'home',label:'Início',Icon:HomeIcon},{id:'pending',label:'Pendências',Icon:ListChecks},{id:'planning',label:'Calendário',Icon:CalendarDays},{id:'accounts',label:'Contas',Icon:Wallet},{id:'preferences',label:'Mais',Icon:Settings}];
-const dateLabel=(d:string)=>d.split("-").reverse().join("/");
 
 function FinanceApp(){
  const authCallback=useRef(typeof window!=='undefined'&&(new URL(window.location.href).searchParams.has('code')||new URLSearchParams(window.location.hash.slice(1)).get('type')==='recovery'));
@@ -48,10 +48,8 @@ function FinanceApp(){
  const [user,setUser]=useState<User|null>(null);
 
  const [authReady,setAuthReady]=useState(false),[authError,setAuthError]=useState('');
- const [period,setPeriod]=useViewState(user?`financas:view:${user.id}:dashboard-period`:null,0,validPeriod);
  const [mainTab,setMainTab]=useViewState(user?`financas:view:${user.id}:main-tab`:null,'home',(v):v is string=>typeof v==='string'&&tabs.some(t=>t.id===v));
  const [moreSection,setMoreSection]=useViewState(user?`financas:view:${user.id}:more-section`:null,'entry',(v):v is string=>typeof v==='string'&&['entry','planning','history','preferences'].includes(v));
- const [projectionEnd,setProjectionEnd]=useViewState(user?`financas:view:${user.id}:projection-end`:null,shiftDate(today(),179),validDate);
  const [membershipStatus,setMembershipStatus]=useState<"loading"|"ready"|"error">("loading");
  const [household,setHousehold]=useState<string|null>(null),[members,setMembers]=useState<Member[]>([]);
 
@@ -154,20 +152,14 @@ function FinanceApp(){
   return()=>{document.removeEventListener('pointerdown',outside,true);document.removeEventListener('focusin',outside);document.removeEventListener('keydown',escape)};
  },[quick]);
  useEffect(()=>{if(!user||!household)return;const refresh=()=>{if(document.visibilityState==='visible'&&!acting.current)void load(user)};const interval=setInterval(refresh,60000);document.addEventListener('visibilitychange',refresh);return()=>{clearInterval(interval);document.removeEventListener('visibilitychange',refresh)}},[user?.id,household]);
- useEffect(()=>{if(members.length)document.title=familyTitle(members)},[members]);
+ useEffect(()=>{document.title=members.length?familyTitle(members):"Finanças Compartilhadas"},[members]);
  useEffect(()=>{if(!payment&&!correction)return;const previous=document.activeElement as HTMLElement|null;const modal=document.querySelector<HTMLElement>('[role="dialog"]');const focusable=()=>Array.from(modal?.querySelectorAll<HTMLElement>('button:not(:disabled),input,select')??[]);focusable()[0]?.focus();const handle=(e:KeyboardEvent)=>{if(e.key==='Escape'){setPayment(null);setCorrection(null)}if(e.key==='Tab'){const items=focusable(),first=items[0],last=items.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}}};document.addEventListener('keydown',handle);return()=>{document.removeEventListener('keydown',handle);previous?.focus()}},[payment,correction]);
  usePagePosition(user&&household&&members.length?`financas:view:${user.id}:${household}:${mainTab}:scroll`:null);
  const cashAccounts=accounts.filter(a=>a.account_type!=='investment');
  const pending=events.filter(e=>e.status==="pending"),total=cashAccounts.reduce((s,a)=>s+a.balance,0);
  const flows=[...transferFlows(scheduled),...pending.map(e=>({...e,amount:(e.kind==='income'?1:-1)*(Number(e.amount)-Number(e.paid_amount??0))}))];
 
- const projection=project(cashAccounts,flows,365);
- const periodRows=projection.slice(period*30,period*30+30);
-
- const limitedProjection=projection.filter(r=>r.date<=projectionEnd);
- const suggestions=transferSuggestions(cashAccounts,limitedProjection);
- const deficit=limitedProjection.find(p=>Object.values(p.byAccount).some(v=>v<0));
-
+ const projection=project(cashAccounts,flows,30);
  async function act(fn:()=>Promise<void>){if(acting.current)return;acting.current=true;setBusy(true);setError("");try{await fn()}catch(e){setError(errorMessage(e))}finally{acting.current=false;setBusy(false)}}
 
  function navigate(tab:string){setMainTab(tab);window.scrollTo({top:0,behavior:'instant'})}
@@ -182,28 +174,28 @@ function FinanceApp(){
 
  async function inviteMember(){if(!user)return;await act(async()=>{const {data,error}=await db.rpc("accept_invite",{p_code:invite.trim(),p_name:displayName.trim()||firstName(String(user.user_metadata?.full_name??user.user_metadata?.name??"Participante"))});if(error)throw error;if(!data)throw new Error("Convite inválido, expirado, revogado ou limite de tentativas atingido. Tente mais tarde.");await load(user)})}
 
- if(!authReady)return <main className="card max-w-lg mx-auto p-8 mt-16" aria-live="polite"><h1>Finanças a Dois</h1>{authError?<><p role="alert">Não foi possível restaurar sua sessão. {authError}</p><button onClick={()=>location.reload()}>Tentar novamente</button></>:<p>Restaurando sua sessão…</p>}</main>;
+ if(!authReady)return <main className="card max-w-lg mx-auto p-8 mt-16" aria-live="polite"><h1>Finanças Compartilhadas</h1>{authError?<><p role="alert">Não foi possível restaurar sua sessão. {authError}</p><button onClick={()=>location.reload()}>Tentar novamente</button></>:<p>Restaurando sua sessão…</p>}</main>;
 
  if(!user)return <LoginPanel db={db} onLogin={async next=>{activeUser.current=next.id;setUser(next);await load(next)}}/>;
 
- if(membershipStatus!=="ready")return <main className="max-w-lg mx-auto p-8 space-y-5" aria-live="polite"><h1 className="text-2xl font-bold">Finanças a Dois</h1>{membershipStatus==="loading"?<p>Carregando sua família…</p>:<><p role="alert">Não foi possível consultar seu núcleo familiar. {error}</p><button disabled={busy} onClick={()=>act(async()=>{setMembershipStatus("loading");await load(user)})}>Tentar novamente</button><button onClick={()=>db.auth.signOut()}>Sair</button></>}</main>;
+ if(membershipStatus!=="ready")return <main className="max-w-lg mx-auto p-8 space-y-5" aria-live="polite"><h1 className="text-2xl font-bold">Finanças Compartilhadas</h1>{membershipStatus==="loading"?<p>Carregando sua família…</p>:<><p role="alert">Não foi possível consultar seu núcleo familiar. {error}</p><button disabled={busy} onClick={()=>act(async()=>{setMembershipStatus("loading");await load(user)})}>Tentar novamente</button><button onClick={()=>db.auth.signOut()}>Sair</button></>}</main>;
 
  if(!household)return <main className="max-w-lg mx-auto p-8 space-y-5"><h1 className="text-2xl font-bold">Bem-vindo!</h1><div className="card space-y-3"><label>Seu nome<input required value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="Nome de exibição" maxLength={120}/></label><p>Crie seu núcleo familiar:</p><button onClick={createHousehold} disabled={busy||!displayName.trim()}>Criar família</button></div><div className="card space-y-3"><p>Ou entre usando o código compartilhado pelo parceiro:</p><input placeholder="Código de convite" value={invite} onChange={e=>setInvite(e.target.value)}/><button disabled={busy} onClick={inviteMember}>Entrar na família</button></div>{error&&<p role="alert" className="text-red-700">{error}</p>}</main>;
 
- return <main className="max-w-6xl mx-auto p-4 md:p-8 space-y-6">
+ return <main className="app-shell max-w-6xl mx-auto p-4 md:p-8 space-y-6">
 
- <header id="home" className="app-header"><div><span className="eyebrow"><Wallet size={16}/> NOSSO DINHEIRO, NOSSOS PLANOS</span><h1>{familyTitle(members)}</h1></div><div className="flex gap-2"><button aria-label="Alternar tema" onClick={()=>{const value=!dark;setDark(value);localStorage.setItem("financas-theme",value?"dark":"light");document.documentElement.classList.toggle("dark",value)}}>{dark?"Modo claro":"Modo escuro"}</button><button onClick={()=>db.auth.signOut()}>Sair</button></div></header>
+ <header id="home" className="app-header"><div><span className="eyebrow"><Wallet size={16}/> FINANÇAS COMPARTILHADAS</span><h1>{familyTitle(members)}</h1><p className="hero-copy">Mais clareza para o presente. Mais espaço para os nossos planos.</p></div><div className="header-actions"><button aria-label="Alternar tema" onClick={()=>{const value=!dark;setDark(value);localStorage.setItem("financas-theme",value?"dark":"light");document.documentElement.classList.toggle("dark",value)}}>{dark?"Modo claro":"Modo escuro"}</button><button onClick={()=>db.auth.signOut()}>Sair</button></div></header>
  {error&&<div role="alert" className="card text-red-700">{error}</div>}
  <div role="tabpanel" id="screen-home" aria-labelledby="tab-home" hidden={mainTab!=='home'} className="tab-content space-y-5">
  <Metrics total={total} income={pending.filter(e=>e.kind==='income'&&e.due_date<=projection[29].date&&cashAccounts.some(a=>a.id===e.account_id)).reduce((n,e)=>n+Number(e.amount)-Number(e.paid_amount??0),0)} expense={pending.filter(e=>e.kind==='expense'&&e.due_date<=projection[29].date&&cashAccounts.some(a=>a.id===e.account_id)).reduce((n,e)=>n+Number(e.amount)-Number(e.paid_amount??0),0)} final={projection[29].total}/>
  <div className="balance-breakdown"><span>Uso diário <b>{brl(accounts.filter(a=>!a.account_type||a.account_type==='checking').reduce((n,a)=>n+a.balance,0))}</b></span><span>Contas de despesas recorrentes <b>{brl(accounts.filter(a=>a.account_type==='recurring').reduce((n,a)=>n+a.balance,0))}</b></span><small>Contas de investimento: {brl(accounts.filter(a=>a.account_type==='investment').reduce((n,a)=>n+a.balance,0))} · Investimentos cadastrados (informativo): {brl(investmentsTotal)}</small></div>
- <section className="card space-y-3" aria-label="Patrimônio em imóveis"><h2>Saldo aplicado em imóveis</h2><strong className="text-2xl">{brl(propertyEquity(properties))}</strong><p className="muted">Valor estimado dos imóveis próprios menos as dívidas. Patrimônio separado do saldo bancário disponível.</p>{properties.filter(p=>p.tenure==='owned').map(p=><article className="transaction" key={p.id}><div><h3>{p.name}</h3><small>{p.city}{p.payment_status==='financed'?` · ${p.pending_installments??0} parcelas pendentes`:''}</small></div><b>{brl(Number(p.estimated_value)-Number(p.debt??0))}</b></article>)}</section>
+ <section className="card property-summary space-y-3" aria-label="Patrimônio em imóveis"><h2>Saldo aplicado em imóveis</h2><strong className="text-2xl">{brl(propertyEquity(properties))}</strong><p className="muted">Valor estimado dos imóveis próprios menos as dívidas. Patrimônio separado do saldo bancário disponível.</p>{properties.filter(p=>p.tenure==='owned').map(p=><article className="transaction" key={p.id}><div><h3>{p.name}</h3><small>{p.city}{p.payment_status==='financed'?` · ${p.pending_installments??0} parcelas pendentes`:''}</small></div><b>{brl(Number(p.estimated_value)-Number(p.debt??0))}</b></article>)}</section>
  <MovementList mode="urgent" events={events} accounts={accounts} members={members} paymentDates={paymentDates} onPay={openPay} onEdit={openEdit} onCorrect={openCorrection}/>
  <MovementList mode="history" events={events} accounts={accounts} members={members} paymentDates={paymentDates} onPay={openPay} onEdit={openEdit} onCorrect={openCorrection}/>
- <section id="projection" className="card"><h2>Seu dinheiro no tempo</h2><PeriodNav period={period} setPeriod={setPeriod} rows={periodRows}/><p className="muted">Entradas e saídas previstas por dia. Vermelho destaca dia com déficit em alguma conta disponível.</p><CashFlowChart rows={dailyMovements(periodRows,flows)}/><p>Saldo inicial: {brl(period===0?total:projection[period*30-1].total)} · Saldo final: {brl(periodRows.at(-1)?.total??total)}</p></section>
- <section className="card"><h2>Projeção e saldo necessário por conta</h2><label>Projetar até<input type="date" min={today()} max={projection.at(-1)?.date} value={projectionEnd} onChange={e=>{if(e.target.value>=today()&&e.target.value<=(projection.at(-1)?.date??''))setProjectionEnd(e.target.value)}}/></label><p className="muted">De {dateLabel(today())} a {dateLabel(projectionEnd)} · investimentos fora do disponível.</p>{cashAccounts.map(a=>{const minimum=Math.min(a.balance,...limitedProjection.map(p=>p.byAccount[a.id]??0));return <div key={a.id} className="transaction"><AccountMark name={a.name} color={a.color}/><strong className={minimum<0?'negative':''}>{brl(minimum)}{minimum<0&&<small className="block">Necessário: {brl(-minimum)}</small>}</strong></div>})}<p className="status">{deficit?'Primeiro déficit: '+dateLabel(deficit.date):'Sem déficit neste intervalo'}</p>{suggestions.map((x,i)=><p key={i}>{accounts.find(a=>a.id===x.from)?.name} → {accounts.find(a=>a.id===x.to)?.name}: {brl(x.amount)}</p>)}</section>
+ <MonthlyOverview events={events} categories={categories} persistenceKey={"financas:view:"+user.id+":"+household}/>
+
  </div>
- <div role="tabpanel" id="screen-pending" aria-labelledby="tab-pending" hidden={mainTab!=='pending'} className="tab-content"><MovementList mode="pending" events={events} accounts={accounts} members={members} paymentDates={paymentDates} onPay={openPay} onEdit={openEdit} onCorrect={openCorrection}/></div>
+ <div role="tabpanel" id="screen-pending" aria-labelledby="tab-pending" hidden={mainTab!=='pending'} className="tab-content"><MovementList persistenceKey={"financas:view:"+user.id+":"+household} mode="pending" events={events} accounts={accounts} members={members} paymentDates={paymentDates} onPay={openPay} onEdit={openEdit} onCorrect={openCorrection}/></div>
  <div role="tabpanel" id="screen-planning" aria-labelledby="tab-planning" hidden={mainTab!=='planning'} className="tab-content"><Planning view="calendar" persistenceKey={user.id+household} transfers={scheduled} db={db} household={household} accounts={accounts} members={members} events={events} reload={()=>load(user)}/></div>
  <div role="tabpanel" id="screen-accounts" aria-labelledby="tab-accounts" hidden={mainTab!=='accounts'} className="tab-content"><AccountsPanel scheduled={scheduled} transferRequest={transferRequest} db={db} household={household} accounts={accounts} members={members} reload={()=>load(user)}/></div>
  <div role="tabpanel" id="screen-preferences" aria-labelledby="tab-preferences" hidden={mainTab!=='preferences'} className="tab-content space-y-5"><h2>Mais opções</h2><nav className="more-menu" aria-label="Opções adicionais">{[['entry','Lançamentos'],['planning','Planejamento'],['history','Histórico'],['preferences','Personalização']].map(([id,label])=><button key={id} aria-pressed={moreSection===id} onClick={()=>setMoreSection(id)}>{label}</button>)}</nav><div hidden={moreSection!=='entry'}>
@@ -234,7 +226,7 @@ export default function Home(){
 
  useEffect(()=>setReady(true),[]);
 
- if(!process.env.NEXT_PUBLIC_SUPABASE_URL||!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)return <main className="card max-w-lg mx-auto mt-16"><h1>Finanças a Dois</h1><p>Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY para conectar seu projeto Supabase.</p></main>;
+ if(!process.env.NEXT_PUBLIC_SUPABASE_URL||!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)return <main className="card max-w-lg mx-auto mt-16"><h1>Finanças Compartilhadas</h1><p>Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY para conectar seu projeto Supabase.</p></main>;
 
  return ready?<FinanceApp/>:<main className="p-8" aria-live="polite">Carregando…</main>;
 

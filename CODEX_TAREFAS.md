@@ -48,3 +48,11 @@ Nenhuma configuração Auth ou migration foi aplicada remotamente. Continuam vá
 - A contagem atualiza tanto Início quanto a aba Imóveis após um pagamento, sem recarregar. Interface de edição inspecionada em 390px, com seletores e rolagem adequados.
 - Validação: tipos, testes financeiros, banco com migrations 001–014 e instalador passaram. A suíte de 35 testes de navegador passou, seguida de cinco cenários para os ajustes finais, incluindo o novo cenário de atualização das parcelas nas duas telas.
 - Publicação: aplicar somente migrations pendentes, incluindo `014_event_editing_and_property_installments.sql`, e fazer deploy do frontend atualizado. `setup.sql` (001–014) continua exclusivo para instalação nova. Nenhuma migration ou configuração foi aplicada no ambiente remoto; não são necessárias novas chaves.
+
+# Continuidade — nova identidade e visão mensal
+
+- Novo tema claro/escuro em azul profundo e verde, cabeçalho renovado, botões uniformes e alinhados, login Finanças Compartilhadas e rodapé com créditos/direitos de Luciano (@englucianodev), GitHub e Instagram.
+- Pendências possui uma única lista rolável do mês selecionado, com navegação anterior/próximo mês, filtros limitados a esse mês, totais e persistência após atualizar. Sem lista secundária de dias seguintes ou botão Ocultar. Altura máxima de dez linhas, reduzida ao espaço disponível em celulares.
+- Início substitui os gráficos diários e a projeção por conta por análise mensal em rosca: categorias com valores/percentuais e modo alternativo de entradas/saídas com déficit, sobra ou equilíbrio. Soma o valor integral de lançamentos não cancelados por vencimento; ignora transferências internas. O modo balanço não inclui saldo bancário inicial. Totais em centavos e cores distintas verificadas nos testes.
+- Sem alteração de banco, migration ou variável de ambiente. Publicação por novo deploy na Vercel; migrations anteriores continuam necessárias. Nenhuma publicação remota foi feita.
+- Validação: testes financeiros e de totais mensais passaram; suíte completa de 37 testes de navegador passou. Capturas de tela de celular verificadas, incluindo novo gráfico e login.

@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
-import {checklist,dailyMovements,alphabetic,propertyEquity} from '../.test-build/finance-view.js';
+import {checklist,dailyMovements,alphabetic,propertyEquity,monthlySummary,moveMonth} from '../.test-build/finance-view.js';
 assert.equal(propertyEquity([{tenure:'owned',estimated_value:300000,debt:150000},{tenure:'owned',estimated_value:50.10,debt:80.20},{tenure:'rented',estimated_value:1000000},{tenure:'third_party',estimated_value:800000}]),149969.90);
 assert.equal(propertyEquity([]),0);
 const make=(id,title,date,status='pending',paid=0)=>({id,title,due_date:date,status,paid_amount:paid,kind:'expense',amount:100,account_id:'a',owner_id:'one'});
+assert.equal(moveMonth('2026-12',1),'2027-01');assert.equal(moveMonth('2027-01',-1),'2026-12');
+const monthlyEvents=[{...make('paid','Pago','2026-11-05','settled',30),amount:30,category:'Moradia'},{...make('part','Parcial','2026-11-06','pending',5),amount:10.10,category:'Mercado'},{...make('more','Mesmo grupo','2026-11-07'),amount:.20,category:'Mercado'},{...make('income','Receita','2026-11-01','settled',50),kind:'income',amount:50},make('cancel','Cancelada','2026-11-01','cancelled'),make('other','Outro mês','2026-12-01')];
+const preferred=[{name:'Moradia',kind:'expense',color:'#167d8d'},{name:'Mercado',kind:'expense',color:'#167d8d'}];const summary=monthlySummary(monthlyEvents,'2026-11',preferred);
+assert.equal(summary.expense,40.30);assert.equal(summary.income,50);assert.equal(summary.balance,9.70);assert.deepEqual(summary.categories.map(c=>[c.name,c.value]),[['Moradia',30],['Mercado',10.30]]);assert.equal(new Set(summary.categories.map(c=>c.color)).size,2);assert.ok(Math.abs(summary.categories.reduce((sum,c)=>sum+c.percent,0)-100)<1e-8);
+assert.equal(monthlySummary(monthlyEvents,'2026-12',preferred).balance,-100);assert.equal(monthlySummary([],'2026-11').expense,0);assert.deepEqual(monthlySummary([],'2026-11').categories,[]);
 const text=checklist([make('1','Luz','2026-11-01'),make('2','Internet','2026-11-03','settled',100),make('3','Condomínio','2026-12-01'),make('4','Cancelada','2026-11-02','cancelled')],'2026-11','2026-11-05');
 assert.match(text,/01 · Luz.*Em atraso/);assert.match(text,/☑ 03 · Internet.*Pago/);assert.doesNotMatch(text,/Condomínio|Cancelada/);
 const rows=[{date:'2026-11-05',byAccount:{a:-50,b:100}},{date:'2026-11-06',byAccount:{a:0,b:100}}];

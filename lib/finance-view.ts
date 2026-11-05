@@ -3,6 +3,17 @@ export type ViewEvent={id:string;title:string;amount:number;paid_amount:number;c
 export function propertyEquity(properties:{estimated_value:number;debt?:number;tenure?:string}[]){return properties.filter(p=>p.tenure==='owned').reduce((sum,p)=>sum+Math.round(Number(p.estimated_value)*100)-Math.round(Number(p.debt??0)*100),0)/100}
 export type ViewAccount={id:string;name:string;owner_id:string;balance:number;is_primary:boolean;color?:string;account_type?:'checking'|'recurring'|'investment'};
 export const alphabetic=(a:string,b:string)=>a.localeCompare(b,'pt-BR',{sensitivity:'base',numeric:true});
+export function moveMonth(month:string,delta:number){const date=new Date(month+'-01T12:00:00Z');date.setUTCMonth(date.getUTCMonth()+delta);return date.toISOString().slice(0,7)}
+export const monthLabel=(month:string)=>new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(month+'-01T12:00:00Z'));
+const expensePalette=['#167d8d','#e67a59','#7464bb','#c49632','#3489c9','#cc5c88','#409a70','#b96b43','#6377bd','#a25caa','#859b3b','#dd6267'];
+export function monthlySummary(events:ViewEvent[],month:string,categories:{name:string;kind:string;color:string}[]=[]){
+ const names=Array.from(new Set([...categories.filter(c=>c.kind==='expense').map(c=>c.name),...events.filter(e=>e.kind==='expense').map(e=>e.category?.trim()||'Outros')])).sort(alphabetic);
+ const colors=new Map<string,string>(),used=new Set<string>();
+ names.forEach((name,i)=>{const preferred=categories.find(c=>c.kind==='expense'&&c.name===name)?.color.toLowerCase();const color=preferred&&/^#[0-9a-f]{6}$/.test(preferred)&&!used.has(preferred)?preferred:expensePalette.find(c=>!used.has(c))??`hsl(${(i*137.508)%360} 52% 48%)`;colors.set(name,color);used.add(color)});
+ let income=0,expense=0;const totals=new Map<string,number>();
+ for(const event of events){if(event.status==='cancelled'||!event.due_date.startsWith(month))continue;const cents=Math.round(Number(event.amount)*100);if(event.kind==='income')income+=cents;else{expense+=cents;const name=event.category?.trim()||'Outros';totals.set(name,(totals.get(name)??0)+cents)}}
+ return {income:income/100,expense:expense/100,balance:(income-expense)/100,categories:Array.from(totals,([name,cents])=>({name,value:cents/100,percent:expense?cents/expense*100:0,color:colors.get(name)!})).sort((a,b)=>b.value-a.value||alphabetic(a.name,b.name))};
+}
 export function shiftDate(date:string,days:number){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)}
 export function checklist(events:ViewEvent[],month=today().slice(0,7),current=today()){
  const rows=events.filter(e=>e.kind==='expense'&&e.status!=='cancelled'&&e.due_date.startsWith(month)).sort((a,b)=>a.due_date.localeCompare(b.due_date)||alphabetic(a.title,b.title));
