@@ -2,10 +2,11 @@
 
 import {useEffect,useMemo,useState,useRef} from "react";
 
-import {Wallet,Plus,Home as HomeIcon,CalendarDays,ListChecks,Settings,ArrowLeftRight} from "lucide-react";
-import {firstName,familyTitle,palette} from "@/lib/identity";
+import {Wallet,Plus,Home as HomeIcon,CalendarDays,ListChecks,Settings} from "lucide-react";
+import {firstName,familyTitle} from "@/lib/identity";
 import {Metrics,CashFlowChart,PeriodNav,AccountMark} from "@/components/finance-visuals";
 import MovementList from "@/components/movement-list";
+import LoginPanel from "@/components/login-panel";
 import AccountsPanel from "@/components/accounts-panel";
 import {dailyMovements,shiftDate,type ViewAccount} from "@/lib/finance-view";
 import EntryForm from "@/components/entry-form";
@@ -32,19 +33,20 @@ const tabs=[{id:'home',label:'Início',Icon:HomeIcon},{id:'pending',label:'Pend�
 const dateLabel=(d:string)=>d.split("-").reverse().join("/");
 
 function FinanceApp(){
+ const authCallback=useRef(typeof window!=='undefined'&&(new URL(window.location.href).searchParams.has('code')||new URLSearchParams(window.location.hash.slice(1)).get('type')==='recovery'));
 
  const [scheduled,setScheduled]=useState<ScheduledTransfer[]>([]);
  const [categories,setCategories]=useState<Category[]>([]),[entryMode,setEntryMode]=useState<'expense'|'income'|'salary'>('expense'),[quick,setQuick]=useState(false),[displayName,setDisplayName]=useState('');
- const [createAccountVersion,setCreateAccountVersion]=useState(0),[investmentsTotal,setInvestmentsTotal]=useState(0),[paymentDates,setPaymentDates]=useState<Record<string,string>>({}),[correction,setCorrection]=useState<Event|null>(null);
+ const [investmentsTotal,setInvestmentsTotal]=useState(0),[paymentDates,setPaymentDates]=useState<Record<string,string>>({}),[correction,setCorrection]=useState<Event|null>(null);
  const acting=useRef(false);
  const [dark,setDark]=useState(false);
  useEffect(()=>{const value=localStorage.getItem("financas-theme")==="dark";setDark(value);document.documentElement.classList.toggle("dark",value)},[]);
- const [user,setUser]=useState<User|null>(null),[email,setEmail]=useState(""),[password,setPassword]=useState("");
+ const [user,setUser]=useState<User|null>(null);
 
  const [authReady,setAuthReady]=useState(false),[authError,setAuthError]=useState('');
  const [period,setPeriod]=useViewState(user?`financas:view:${user.id}:dashboard-period`:null,0,validPeriod);
  const [mainTab,setMainTab]=useViewState(user?`financas:view:${user.id}:main-tab`:null,'home',(v):v is string=>typeof v==='string'&&tabs.some(t=>t.id===v));
- const [moreSection,setMoreSection]=useViewState(user?`financas:view:${user.id}:more-section`:null,'entry',(v):v is string=>typeof v==='string'&&['entry','transfer','planning','history','preferences'].includes(v));
+ const [moreSection,setMoreSection]=useViewState(user?`financas:view:${user.id}:more-section`:null,'entry',(v):v is string=>typeof v==='string'&&['entry','planning','history','preferences'].includes(v));
  const [projectionEnd,setProjectionEnd]=useViewState(user?`financas:view:${user.id}:projection-end`:null,shiftDate(today(),179),validDate);
  const [membershipStatus,setMembershipStatus]=useState<"loading"|"ready"|"error">("loading");
  const [household,setHousehold]=useState<string|null>(null),[members,setMembers]=useState<Member[]>([]);
@@ -106,7 +108,7 @@ function FinanceApp(){
   const transfersResult=await db.from('scheduled_transfers').select('*').eq('household_id',h);if(version!==loadVersion.current||activeUser.current!==u.id)return;if(transfersResult.error)setError(errorMessage(transfersResult.error));else setScheduled(transfersResult.data??[]);
   const receiptRows=await db.from('event_payments').select('event_id,paid_date').eq('household_id',h).is('reversed_at',null).order('paid_date');if(version!==loadVersion.current||activeUser.current!==u.id)return;setPaymentDates(Object.fromEntries((receiptRows.data??[]).map(r=>[r.event_id,r.paid_date])));
   const investmentRows=await db.from('investments').select('amount').eq('household_id',h);if(version!==loadVersion.current||activeUser.current!==u.id)return;setInvestmentsTotal((investmentRows.data??[]).reduce((n,r)=>n+Number(r.amount),0));
-  const cats=await db.from('categories').select('*').eq('household_id',h);
+  const cats=await db.from('categories').select('*').eq('household_id',h).is('deleted_at',null);
   if(version!==loadVersion.current||activeUser.current!==u.id)return;
   if(cats.error)setError(errorMessage(cats.error));else setCategories((cats.data??[]).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR',{sensitivity:'base'})));
 
@@ -118,9 +120,9 @@ function FinanceApp(){
  }
 
  useEffect(()=>{
-  let mounted=true,revision=0;
+  let mounted=true,revision=0,callbackPending=authCallback.current,recovering=false;let callbackTimer:ReturnType<typeof setTimeout>|undefined;
   function restore(next:User|null){
-   if(!mounted)return;
+   if(!mounted||callbackPending||recovering)return;
    if(activeUser.current!==next?.id){
     activeUser.current=next?.id??null;loadVersion.current++;setHousehold(null);setMembershipStatus("loading");setError("");setPaymentDates({});setInvestmentsTotal(0);setCorrection(null);setScheduled([]);setCategories([]);setProperties([]);setAccounts([]);setEvents([]);setMembers([]);setInvite("");setPayment(null);setEditing(null);retryKeys.current.clear();
     if(next)setTimeout(()=>{if(mounted)void load(next)},0);
@@ -129,14 +131,15 @@ function FinanceApp(){
   }
   // A single session source prevents getUser network failures or late responses
   // from replacing a restored session during a reload or token renewal.
-  const {data:listener}=db.auth.onAuthStateChange((_event,session)=>{revision++;restore(session?.user??null)});
+  const {data:listener}=db.auth.onAuthStateChange((event,session)=>{revision++;if(event==='PASSWORD_RECOVERY'&&session){recovering=true;try{sessionStorage.setItem('financas:password-recovery',session.user.id)}catch{}location.replace('/redefinir-senha');return}restore(session?.user??null)});
   const initialRevision=revision;
-  db.auth.getSession().then(({data,error})=>{
+  if(callbackPending){void db.auth.initialize().then(({error})=>{if(!mounted||recovering)return;if(error){setAuthError(errorMessage(error));return}callbackTimer=setTimeout(()=>{if(!mounted||recovering)return;callbackPending=false;void db.auth.getSession().then(({data,error})=>{if(!mounted||recovering)return;if(error)setAuthError(errorMessage(error));else restore(data.session?.user??null)})},0)})}
+  else db.auth.getSession().then(({data,error})=>{
    if(!mounted||revision!==initialRevision)return;
    if(error){setAuthError(errorMessage(error));return}
    restore(data.session?.user??null);
   }).catch(error=>{if(mounted&&revision===initialRevision)setAuthError(errorMessage(error))});
-  return ()=>{mounted=false;loadVersion.current++;listener.subscription.unsubscribe()}
+  return ()=>{mounted=false;if(callbackTimer)clearTimeout(callbackTimer);loadVersion.current++;listener.subscription.unsubscribe()}
  },[db]);
 
  useEffect(()=>{if(!user||!household)return;const refresh=()=>{if(document.visibilityState==='visible'&&!acting.current)void load(user)};const interval=setInterval(refresh,60000);document.addEventListener('visibilitychange',refresh);return()=>{clearInterval(interval);document.removeEventListener('visibilitychange',refresh)}},[user?.id,household]);
@@ -160,8 +163,6 @@ function FinanceApp(){
  function openPay(e:Event){setPayment(e);setPaymentAccount(e.account_id);setPaidValue(String(Number(e.amount)-Number(e.paid_amount??0)));setPaidDate(today())}
  function openEdit(e:Event){setEditing(e);setEditAmount(String(e.amount));setEditDue(e.due_date)}
  function openCorrection(e:Event){setCorrection(e)}
- async function login(signup:boolean){await act(async()=>{const r=signup?await db.auth.signUp({email,password}):await db.auth.signInWithPassword({email,password});if(r.error)throw r.error;if(signup)alert("Cadastro solicitado. Verifique seu e-mail caso a confirmação esteja ativada.");if(r.data.session&&r.data.user){activeUser.current=r.data.user.id;setUser(r.data.user);await load(r.data.user)}})}
-
  async function createHousehold(){if(!user)return;await act(async()=>{const {error}=await db.rpc("create_household",{p_name:"Nossa família",p_display_name:displayName.trim()||firstName(String(user.user_metadata?.full_name??user.user_metadata?.name??"Participante"))});if(error)throw error;await load(user)})}
 
  async function pay(e:Event){if(!user)return;await act(async()=>{
@@ -176,7 +177,7 @@ function FinanceApp(){
 
  if(!authReady)return <main className="card max-w-lg mx-auto p-8 mt-16" aria-live="polite"><h1>Finanças a Dois</h1>{authError?<><p role="alert">Não foi possível restaurar sua sessão. {authError}</p><button onClick={()=>location.reload()}>Tentar novamente</button></>:<p>Restaurando sua sessão…</p>}</main>;
 
- if(!user)return <main className="max-w-md mx-auto p-8 mt-16 card space-y-4"><h1 className="text-2xl font-bold">Finanças a Dois</h1><p>Entre com seu e-mail e senha.</p><input placeholder="E-mail" type="email" value={email} onChange={e=>setEmail(e.target.value)}/><input placeholder="Senha" type="password" value={password} onChange={e=>setPassword(e.target.value)}/><div className="flex gap-2"><button disabled={busy} onClick={()=>login(false)}>Entrar</button><button disabled={busy} onClick={()=>login(true)}>Criar conta</button></div>{error&&<p role="alert" className="text-red-700">{error}</p>}</main>;
+ if(!user)return <LoginPanel db={db} onLogin={async next=>{activeUser.current=next.id;setUser(next);await load(next)}}/>;
 
  if(membershipStatus!=="ready")return <main className="max-w-lg mx-auto p-8 space-y-5" aria-live="polite"><h1 className="text-2xl font-bold">Finanças a Dois</h1>{membershipStatus==="loading"?<p>Carregando sua família…</p>:<><p role="alert">Não foi possível consultar seu núcleo familiar. {error}</p><button disabled={busy} onClick={()=>act(async()=>{setMembershipStatus("loading");await load(user)})}>Tentar novamente</button><button onClick={()=>db.auth.signOut()}>Sair</button></>}</main>;
 
@@ -189,20 +190,21 @@ function FinanceApp(){
  <div role="tabpanel" id="screen-home" aria-labelledby="tab-home" hidden={mainTab!=='home'} className="tab-content space-y-5">
  <Metrics total={total} income={pending.filter(e=>e.kind==='income'&&e.due_date<=projection[29].date&&cashAccounts.some(a=>a.id===e.account_id)).reduce((n,e)=>n+Number(e.amount)-Number(e.paid_amount??0),0)} expense={pending.filter(e=>e.kind==='expense'&&e.due_date<=projection[29].date&&cashAccounts.some(a=>a.id===e.account_id)).reduce((n,e)=>n+Number(e.amount)-Number(e.paid_amount??0),0)} final={projection[29].total}/>
  <div className="balance-breakdown"><span>Uso diário <b>{brl(accounts.filter(a=>!a.account_type||a.account_type==='checking').reduce((n,a)=>n+a.balance,0))}</b></span><span>Contas de despesas recorrentes <b>{brl(accounts.filter(a=>a.account_type==='recurring').reduce((n,a)=>n+a.balance,0))}</b></span><small>Contas de investimento: {brl(accounts.filter(a=>a.account_type==='investment').reduce((n,a)=>n+a.balance,0))} · Investimentos cadastrados (informativo): {brl(investmentsTotal)}</small></div>
+ <MovementList mode="urgent" events={events} accounts={accounts} members={members} paymentDates={paymentDates} onPay={openPay} onEdit={openEdit} onCorrect={openCorrection}/>
  <MovementList mode="history" events={events} accounts={accounts} members={members} paymentDates={paymentDates} onPay={openPay} onEdit={openEdit} onCorrect={openCorrection}/>
  <section id="projection" className="card"><h2>Seu dinheiro no tempo</h2><PeriodNav period={period} setPeriod={setPeriod} rows={periodRows}/><p className="muted">Entradas e saídas previstas por dia. Vermelho destaca dia com déficit em alguma conta disponível.</p><CashFlowChart rows={dailyMovements(periodRows,flows)}/><p>Saldo inicial: {brl(period===0?total:projection[period*30-1].total)} · Saldo final: {brl(periodRows.at(-1)?.total??total)}</p></section>
  <section className="card"><h2>Projeção e saldo necessário por conta</h2><label>Projetar até<input type="date" min={today()} max={projection.at(-1)?.date} value={projectionEnd} onChange={e=>{if(e.target.value>=today()&&e.target.value<=(projection.at(-1)?.date??''))setProjectionEnd(e.target.value)}}/></label><p className="muted">De {dateLabel(today())} a {dateLabel(projectionEnd)} · investimentos fora do disponível.</p>{cashAccounts.map(a=>{const minimum=Math.min(a.balance,...limitedProjection.map(p=>p.byAccount[a.id]??0));return <div key={a.id} className="transaction"><AccountMark name={a.name} color={a.color}/><strong className={minimum<0?'negative':''}>{brl(minimum)}{minimum<0&&<small className="block">Necessário: {brl(-minimum)}</small>}</strong></div>})}<p className="status">{deficit?'Primeiro déficit: '+dateLabel(deficit.date):'Sem déficit neste intervalo'}</p>{suggestions.map((x,i)=><p key={i}>{accounts.find(a=>a.id===x.from)?.name} → {accounts.find(a=>a.id===x.to)?.name}: {brl(x.amount)}</p>)}</section>
  </div>
  <div role="tabpanel" id="screen-pending" aria-labelledby="tab-pending" hidden={mainTab!=='pending'} className="tab-content"><MovementList mode="pending" events={events} accounts={accounts} members={members} paymentDates={paymentDates} onPay={openPay} onEdit={openEdit} onCorrect={openCorrection}/></div>
  <div role="tabpanel" id="screen-planning" aria-labelledby="tab-planning" hidden={mainTab!=='planning'} className="tab-content"><Planning view="calendar" persistenceKey={user.id+household} transfers={scheduled} db={db} household={household} accounts={accounts} members={members} events={events} reload={()=>load(user)}/></div>
- <div role="tabpanel" id="screen-accounts" aria-labelledby="tab-accounts" hidden={mainTab!=='accounts'} className="tab-content"><AccountsPanel createVersion={createAccountVersion} db={db} household={household} accounts={accounts} members={members} reload={()=>load(user)}/></div>
- <div role="tabpanel" id="screen-preferences" aria-labelledby="tab-preferences" hidden={mainTab!=='preferences'} className="tab-content space-y-5"><h2>Mais opções</h2><nav className="more-menu" aria-label="Opções adicionais">{[['entry','Lançamentos'],['transfer','Transferências'],['planning','Planejamento'],['history','Histórico'],['preferences','Personalização']].map(([id,label])=><button key={id} aria-pressed={moreSection===id} onClick={()=>setMoreSection(id)}>{label}</button>)}</nav><div hidden={moreSection!=='entry'} className="space-y-4"><div className="flex flex-wrap gap-2"><button onClick={()=>setEntryMode('expense')}>Nova despesa</button><button onClick={()=>setEntryMode('income')}>Nova receita</button><button onClick={()=>setEntryMode('salary')}>Cadastrar salário</button></div>
- <EntryForm key={entryMode} mode={entryMode} db={db} household={household} userId={user.id} accounts={accounts} members={members} categories={categories} properties={properties} reload={()=>load(user)}/></div>
-<div hidden={moreSection!=='transfer'}>  <section className="grid md:grid-cols-2 gap-4"><div className="card space-y-3"><h2 id="transfer" className="text-lg font-bold">Transferência interna</h2><form onSubmit={transfer} className="space-y-2"><label>Origem</label><select name="from">{accounts.map(a=><option key={a.id} value={a.id}>{a.name} · {members.find(m=>m.user_id===a.owner_id)?.display_name}</option>)}</select><label>Destino</label><select name="to">{accounts.map(a=><option key={a.id} value={a.id}>{a.name} · {members.find(m=>m.user_id===a.owner_id)?.display_name}</option>)}</select><input required name="amount" min=".01" type="number" step=".01" placeholder="Valor"/><label>Data da transferência<input name="date" type="date" defaultValue={today()} min={today()} required/></label><button disabled={busy||accounts.length<2}>Transferir ou agendar</button></form>{scheduled.filter(t=>t.status==='pending').map(t=><div className="transaction" key={t.id}><span>{dateLabel(t.due_date)} · {accounts.find(a=>a.id===t.from_account)?.name} → {accounts.find(a=>a.id===t.to_account)?.name} · {brl(t.amount)}</span><button disabled={busy||t.due_date>today()} onClick={()=>act(async()=>{const r=await db.rpc('execute_transfer',{p_id:t.id});if(r.error)throw r.error;await load(user)})}>Confirmar transferência</button></div>)}</div>
+ <div role="tabpanel" id="screen-accounts" aria-labelledby="tab-accounts" hidden={mainTab!=='accounts'} className="tab-content"><AccountsPanel db={db} household={household} accounts={accounts} members={members} reload={()=>load(user)}/>  <section className="grid md:grid-cols-2 gap-4"><div className="card space-y-3"><h2 id="transfer" className="text-lg font-bold">Transferência interna</h2><form onSubmit={transfer} className="space-y-2"><label>Origem</label><select name="from">{accounts.map(a=><option key={a.id} value={a.id}>{a.name} · {members.find(m=>m.user_id===a.owner_id)?.display_name}</option>)}</select><label>Destino</label><select name="to">{accounts.map(a=><option key={a.id} value={a.id}>{a.name} · {members.find(m=>m.user_id===a.owner_id)?.display_name}</option>)}</select><input required name="amount" min=".01" type="number" step=".01" placeholder="Valor"/><label>Data da transferência<input name="date" type="date" defaultValue={today()} min={today()} required/></label><button disabled={busy||accounts.length<2}>Transferir ou agendar</button></form>{scheduled.filter(t=>t.status==='pending').map(t=><div className="transaction" key={t.id}><span>{dateLabel(t.due_date)} · {accounts.find(a=>a.id===t.from_account)?.name} → {accounts.find(a=>a.id===t.to_account)?.name} · {brl(t.amount)}</span><button disabled={busy||t.due_date>today()} onClick={()=>act(async()=>{const r=await db.rpc('execute_transfer',{p_id:t.id});if(r.error)throw r.error;await load(user)})}>Confirmar transferência</button></div>)}</div>
 
 </section>
 
- </div><div hidden={moreSection!=='planning'}><Planning view="more" persistenceKey={user.id+household} transfers={scheduled} db={db} household={household} accounts={accounts} members={members} events={events} reload={()=>load(user)}/></div>
+ </div>
+ <div role="tabpanel" id="screen-preferences" aria-labelledby="tab-preferences" hidden={mainTab!=='preferences'} className="tab-content space-y-5"><h2>Mais opções</h2><nav className="more-menu" aria-label="Opções adicionais">{[['entry','Lançamentos'],['planning','Planejamento'],['history','Histórico'],['preferences','Personalização']].map(([id,label])=><button key={id} aria-pressed={moreSection===id} onClick={()=>setMoreSection(id)}>{label}</button>)}</nav><div hidden={moreSection!=='entry'} className="space-y-4"><div className="flex flex-wrap gap-2"><button onClick={()=>setEntryMode('expense')}>Nova despesa</button><button onClick={()=>setEntryMode('income')}>Nova receita</button><button onClick={()=>setEntryMode('salary')}>Cadastrar salário</button></div>
+ <EntryForm key={entryMode} mode={entryMode} db={db} household={household} userId={user.id} accounts={accounts} members={members} categories={categories} properties={properties} reload={()=>load(user)}/></div>
+<div hidden={moreSection!=='planning'}><Planning view="more" persistenceKey={user.id+household} transfers={scheduled} db={db} household={household} accounts={accounts} members={members} events={events} reload={()=>load(user)}/></div>
  <section hidden={moreSection!=='history'} className="card"><h2>Histórico de confirmações</h2><div className="scroll-list">{events.filter(e=>Number(e.paid_amount)>0).map(e=><div key={e.id} className="transaction"><span>{e.title} · {brl(Number(e.paid_amount))}</span>{e.kind==='income'&&<button onClick={()=>openCorrection(e)}>Corrigir recebimento</button>}<button disabled={busy} onClick={()=>act(async()=>{const {error}=await db.rpc("reverse_event",{p_event_id:e.id});if(error)throw error;await load(user)})}>Estornar</button></div>)}</div></section>
  <div hidden={moreSection!=='preferences'}><Preferences db={db} household={household} reload={()=>load(user)} categories={categories}/></div></div>
   {payment&&<section role="dialog" aria-modal="true" aria-label="Confirmar movimentação" className="card space-y-3"><h2>Confirmar: {payment.title} · {brl(payment.amount)}</h2><label>Conta efetiva<select value={paymentAccount} onChange={e=>setPaymentAccount(e.target.value)}>{accounts.map(a=><option key={a.id} value={a.id}>{a.name} · {members.find(m=>m.user_id===a.owner_id)?.display_name}</option>)}</select></label><label>Valor efetivo<input type="number" min=".01" max={Number(payment.amount)-Number(payment.paid_amount??0)} step=".01" value={paidValue} onChange={e=>setPaidValue(e.target.value)}/></label><label>Data efetiva<input type="date" max={today()} value={paidDate} onChange={e=>setPaidDate(e.target.value)}/></label><button disabled={busy||!paidDate||Number(paidValue)<=0} onClick={()=>pay(payment)}>Confirmar</button> <button onClick={()=>setPayment(null)}>Cancelar</button></section>}
@@ -214,7 +216,7 @@ function FinanceApp(){
 
 
  {correction&&<section role="dialog" aria-modal="true" aria-label="Corrigir recebimento" className="card space-y-3"><h2>Corrigir: {correction.title}</h2><p className="muted">O ajuste preserva o recebimento anterior no histórico.</p><form className="space-y-3" onSubmit={e=>{e.preventDefault();const fd=new FormData(e.currentTarget);void act(async()=>{const params={p_event:correction.id,p_amount:Number(fd.get('amount')),p_date:String(fd.get('date')),p_expected:Number(correction.paid_amount)},signature=JSON.stringify(['correct',params]);const r=await db.rpc('correct_income',{p_id:requestKey(signature),...params});if(r.error)throw r.error;retryKeys.current.delete(signature);setCorrection(null);await load(user)})}}><label>Valor recebido<input name="amount" type="number" min=".01" step=".01" defaultValue={correction.paid_amount} required/></label><label>Data do recebimento<input name="date" type="date" max={today()} defaultValue={paymentDates[correction.id]??correction.due_date} required/></label><button disabled={busy}>Salvar correção</button><button type="button" onClick={()=>setCorrection(null)}>Cancelar</button></form></section>}
- <button className="quick-action" aria-label="Nova movimentação" onClick={()=>setQuick(!quick)}><Plus/></button>{quick&&<div className="quick-menu card">{[['income','Nova receita'],['salary','Novo salário'],['expense','Nova despesa']].map(([m,label])=><button key={m} onClick={()=>{setEntryMode(m as typeof entryMode);setMoreSection('entry');navigate('preferences');setQuick(false)}}>{label}</button>)}<button onClick={()=>{setMoreSection('transfer');navigate('preferences');setQuick(false);setTimeout(()=>document.getElementById('transfer')?.scrollIntoView(),0)}}>Nova transferência</button><button onClick={()=>{navigate('accounts');setCreateAccountVersion(n=>n+1);setQuick(false)}}>Nova conta bancária</button></div>}
+ <button className="quick-action" aria-label="Nova movimentação" aria-expanded={quick} onClick={()=>setQuick(!quick)}><Plus/></button>{quick&&<div className="quick-menu card">{[['expense','Despesa'],['income','Receita']].map(([m,label])=><button key={m} onClick={()=>{setEntryMode(m as typeof entryMode);setMoreSection('entry');navigate('preferences');setQuick(false)}}>{label}</button>)}<button onClick={()=>{navigate('accounts');setQuick(false);setTimeout(()=>document.getElementById('transfer')?.scrollIntoView(),0)}}>Transferência</button></div>}
  <nav className="bottom-nav" aria-label="Navegação principal" role="tablist">{tabs.map(({id,label,Icon},i)=><button role="tab" key={id} id={'tab-'+id} aria-controls={'screen-'+id} aria-selected={mainTab===id} tabIndex={mainTab===id?0:-1} onClick={()=>navigate(id)} onKeyDown={e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const index=e.key==='Home'?0:e.key==='End'?tabs.length-1:(i+(e.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;navigate(tabs[index].id);document.getElementById('tab-'+tabs[index].id)?.focus()}}}><Icon size={20}/><span>{label}</span></button>)}</nav>
  </main>
 
