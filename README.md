@@ -1,79 +1,61 @@
-# Finanças a Dois
+# Finanças compartilhadas
 
-Aplicação Next.js, React, TypeScript e Supabase para finanças compartilhadas de duas pessoas.
+Aplicação Next.js + Supabase para receitas, despesas, contas, cartões e projeções por participante e grupo. O cabeçalho usa os primeiros nomes cadastrados, sem nomes fixos. Perfis antigos identificados por e-mail aparecem como “Participante”; informe seu nome em Mais → Seu nome.
 
-## Executar localmente
+## Executar
 
-1. Instale Node.js 20.9 ou superior e execute `npm ci`.
-2. Copie `.env.example` para `.env.local` e informe a URL e a chave pública do Supabase.
-3. Em um Supabase de desenvolvimento, revise e aplique **todas** as migrations de `supabase/migrations` na ordem numérica, de `001` a `007`. Em banco existente, aplique somente as ainda não executadas. Não reaplique scripts nem substitua tabelas existentes.
-4. Configure autenticação por e-mail, URL do site e redirecionamentos no Supabase Auth.
-5. Execute `npm run dev` e abra [localhost:3000](http://localhost:3000).
-6. Cadastre o primeiro usuário e crie a família. Gere um convite de uso único, válido por 24 horas, para o segundo usuário.
+1. Use Node.js 20.9+ e execute `npm ci`.
+2. Copie `.env.example` para `.env.local`. Informe `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` (chave pública/publishable ou anon; nunca service_role).
+3. Prepare o banco conforme instruções abaixo.
+4. Configure autenticação por e-mail no Supabase e execute `npm run dev`.
 
-Use somente a chave pública/publishable ou anon no frontend. Nunca use `service_role` nas variáveis `NEXT_PUBLIC_*`.
+## Banco e atualização
 
-## Funcionalidades existentes
+- **Banco existente com migrations 001–007:** revise e execute `008_modernization.sql`, depois `009_scheduled_transfers.sql` no SQL Editor do Supabase ligado à Vercel. Faça backup antes de atualizar o ambiente publicado.
+- **Banco novo:** execute `supabase/setup.sql`, que reúne 001–009 em uma transação. O script recusa instalar sobre estrutura existente. Nunca remova essa proteção para atualizar um banco.
+- A migration 008 adiciona cores, categorias, recorrências, perfil e novos convites; a 009 adiciona transferências agendadas. Elas não apagam tabelas nem lançamentos.
+- Convites antigos continuam aceitos pelo novo endpoint até sua expiração, uso ou revogação. Os endpoints antigos de convite ficam desabilitados para evitar contornar revogação e limites de tentativas. Atualize também o frontend.
+- A API solicita atualização do cache ao terminar as migrations. Se necessário, execute `NOTIFY pgrst, 'reload schema';`.
 
-- Login individual, família com até dois membros, convites aleatórios armazenados por hash e isolamento por RLS.
-- Contas por pessoa, conta principal transacional e sugestão da conta conforme o responsável, preservando escolha manual durante recargas.
-- Receitas/despesas avulsas ou mensais com até 60 ocorrências, categoria, imóvel, valor estimado variável e edição/cancelamento individual.
-- Pagamentos integrais/parciais com conta, valor e data efetivos; estorno que preserva histórico e reabre a pendência.
-- Livro de movimentações, auditoria de alterações dos lançamentos e operações financeiras por RPC transacional com chaves de repetição.
-- Transferências internas sem alterar o saldo consolidado.
-- Cartões, fechamento/vencimento, compras parceladas e pagamento integral/parcial de faturas sem duplicar o débito bancário.
-- Projeção diária de 30/60/90/180/365 dias por conta, pessoa e casal; atrasados entram hoje. Alertas de primeiro déficit, menor saldo e sugestões de transferências.
-- Calendário mensal, relatórios por vencimento com filtros e gráfico por categoria, cadastro informativo de imóveis/investimentos e simulador de receitas, despesas e transferências.
-- Tema claro/escuro e interface responsiva em português.
+## Funcionalidades
 
-## Verificação
+- Dashboard mobile com saldos real/projetado, receitas/despesas previstas, pendências prioritárias, resumo da semana, gráficos por conta e navegação inferior com ações rápidas.
+- Tema claro/escuro, ícones Lucide, animações Motion, componente Button no padrão shadcn/ui e gráficos Recharts. Inclinação 3D discreta em contas somente com mouse; preferência por movimento reduzido respeitada.
+- Nome dinâmico para qualquer quantidade de participantes. Conta principal sugerida conforme responsável e escolha manual preservada.
+- Cores personalizadas salvas por conta e usadas em cartões, lançamentos, calendário, projeção e simulador.
+- Cadastro específico de salário com dia de pagamento, início, fim opcional e previsões mensais. Meses curtos limitam o dia ao último disponível.
+- Receitas/despesas avulsas, semanais, mensais, bimestrais, trimestrais, semestrais, anuais ou com intervalo personalizado em dias. Receitas não exigem imóvel; despesas mantêm vínculo opcional. Vínculos históricos foram preservados.
+- Edição individual e atualização de valores futuros ainda não pagos, preservando confirmações. Despesas variáveis usam o último valor integralmente confirmado para estimar ocorrências futuras sem pagamentos.
+- Categorias predefinidas e categorias personalizadas com ícone, cor, edição e desativação. Desativar ou renomear não apaga movimentações e não reescreve rótulos históricos.
+- Projeção em seis blocos de 30 dias, de hoje até o 180º dia. Saldos acumulados nunca reiniciam entre blocos. Pendências atrasadas entram hoje.
+- Calendário mensal com painel de todas as movimentações do dia; descrições compactas no desktop e indicadores no celular.
+- Simulador até uma data, limitado a 365 dias, com saldo inicial, receitas, despesas, saldo final, gráfico, mínimos e resultados por conta/participante. Usa o mesmo motor do dashboard. Cenários hipotéticos ficam apenas em memória.
+- Transferências imediatas e agendadas. Agendar não movimenta saldo real; a confirmação manual na data ou depois efetiva a operação. A projeção considera os dois lados sem alterar o consolidado.
+- Cartões e compras parceladas, faturas, pagamentos integrais/parciais com conta/data/valor efetivos, estorno e auditoria por ledger. Compras e previsões não alteram saldo real.
+- Convites aleatórios ou personalizados (8–64 letras/números/hífens), hash no banco, expiração de 1–168 horas, uso único, copiar/compartilhar e revogação. Entrar exige autenticação; dez tentativas inválidas por usuário/hora bloqueiam novas tentativas nessa janela. Sem limite fixo de dois participantes no novo fluxo.
+
+## Testes
 
 ```sh
 npm run typecheck
 npm test
 npm run test:db
+node tests/setup.mjs
 npm run test:e2e
 npm run build
 ```
 
-`test:db` aplica todas as migrations em PostgreSQL embarcado PGlite e verifica RLS, RPCs, preservação dos saldos legados, pagamentos, estornos, recorrências e cartões. Não conecta ao seu Supabase.
+Banco testado em PostgreSQL embarcado PGlite, com RLS, RPCs, isolamento entre famílias, preservação de legado, salários/recorrências, meses curtos, valores variáveis, categorias, convites e transferências. Playwright usa API simulada, sessão em cookie e Edge no Windows; em outros sistemas instale Chromium (`npx playwright install chromium`). Porta de teste: 3100.
 
-Os testes Playwright usam respostas simuladas do Supabase e sessão em cookie, sem dados reais. No Windows usam Microsoft Edge instalado; em outros sistemas instale Chromium com `npx playwright install chromium`. O servidor de teste usa a porta 3100.
+## Vercel
 
-Validação local em 05/11/2026: TypeScript, cálculos financeiros, banco, três testes E2E no Edge e build de produção passaram.
+Importe o repositório Git, use preset Next.js e a pasta que contém `package.json` como Root Directory. Build: `npm run build`; saída automática. Configure as duas variáveis públicas antes do deploy. Ajuste Site URL e redirecionamentos do Supabase Auth para o domínio publicado. Publique o código junto das migrations e teste login, criação/convite, recebimento, pagamento, estorno e transferência em homologação.
 
-## Implantação na Vercel
+## Limites atuais
 
-- Importe o repositório e selecione `financas-a-dois` como Root Directory se o repositório contiver a pasta acima do app.
-- Use o preset Next.js e o comando de build `npm run build`.
-- Configure `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` em cada ambiente e faça novo build após alterações.
-- Aplique as migrations no Supabase de destino, em ordem e com backup antes de atualizar banco existente.
-- Ajuste Site URL e URLs de redirecionamento no Supabase Auth para o domínio publicado.
-- Valide com duas contas de teste: convite, isolamento entre famílias, pagamento, estorno e transferência antes de inserir dados reais.
-
-## Limitações conhecidas
-
-- Ainda precisa de homologação no Supabase hospedado e na Vercel. Testes locais com PGlite e API simulada não substituem essa validação nem comprovam concorrência com várias conexões.
-- Recorrências geram um lote finito; não há edição futura em lote nem atualização automática pelo último valor variável confirmado.
-- Transferências futuras existem no simulador; não há agendamento persistente. Não há reserva mínima configurável, conciliação bancária, paginação ou exportação dos relatórios.
-- Investimentos são informativos e ficam fora do saldo disponível, inclusive os líquidos. O resgate deve ser registrado na conta quando recebido, evitando somar o mesmo dinheiro duas vezes.
-- Relatórios usam vencimento (competência); não fornecem extrato por data/conta efetiva de pagamento. O saldo de calendário é projetado de hoje até 365 dias; datas anteriores não reconstituem o saldo histórico.
-- A auditoria cobre lançamentos e movimentações; não existe ainda interface de consulta completa ao ledger ou auditoria de todos os cadastros.
-
-Consulte `CODEX_TAREFAS.md` para o ponto de continuidade.
-
-## Correção de login/criação de família no ambiente publicado
-
-A API pública utilizada por `nossascoisinhas.vercel.app` respondeu `PGRST205` ao consultar somente a estrutura de `household_members`, sem ler registros: a tabela `public.household_members` não estava disponível no cache de esquema. Verifique se as variáveis da Vercel apontam para o projeto Supabase correto e se as migrations foram aplicadas nesse projeto.
-
-Para um banco sem estrutura do aplicativo, abra `supabase/setup.sql`, copie o conteúdo inteiro para uma nova consulta no SQL Editor do Supabase correto e execute. O script reúne as migrations 001–007 em uma transação e solicita a atualização do cache da API. Ele recusa executar se encontrar tabelas existentes do aplicativo, sem apagar dados. Se essa proteção for acionada, aplique somente as migrations pendentes; não remova a proteção.
-
-Se as tabelas já existem e todas as migrations foram aplicadas, atualize somente o cache no SQL Editor:
-
-```sql
-NOTIFY pgrst, 'reload schema';
-```
-
-Publique também o código corrigido na Vercel. A interface passa a mostrar erros legíveis do Supabase e separa falha de consulta de usuário realmente sem família. Não publique senhas nem chaves privadas. O banco remoto não foi alterado por esta correção.
-
-Verificação adicional do instalador: `node tests/setup.mjs`. Foram validados sete testes de navegador, build de produção, instalação inicial, criação autenticada de família e recusa de reinstalação preservando dados.
+- Recorrências sem término geram um ano de previsões; não há renovação automática em background. Com término, o limite é cinco anos e 2.000 ocorrências por cadastro. Personalizada significa intervalo em dias.
+- Relatórios usam vencimento (competência); não substituem extrato por data/conta efetiva. O calendário não reconstrói saldos anteriores a hoje.
+- Investimentos e imóveis continuam informativos. Investimentos não entram no saldo bancário; registre o resgate ao recebê-lo para evitar dupla contagem.
+- Ainda não há conciliação, paginação, reserva mínima configurável ou exportação de relatórios. Faturas variam pelas compras cadastradas; ajustes devem corresponder a compras reais, sem criar outra despesa da mesma fatura.
+- Testes locais não substituem homologação com autenticação real e concorrência entre conexões no Supabase hospedado.
+- Esta modernização não executou migrations em dados reais nem publicou na Vercel.

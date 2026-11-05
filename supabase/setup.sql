@@ -1,7 +1,7 @@
 -- Instalação inicial do Finanças a Dois.
 -- Execute no SQL Editor do MESMO Supabase configurado na Vercel.
 -- Não use para atualizar banco existente: aplique apenas as migrations pendentes.
--- Gerado a partir de supabase/migrations/001 a 007.
+-- Gerado a partir de supabase/migrations/001 a 009.
 begin;
 do $$
 begin
@@ -11,7 +11,7 @@ begin
    'households','household_members','financial_accounts','financial_events',
    'financial_transfers','household_invites','account_ledger','properties',
    'investments','credit_cards','card_purchases','event_audit',
-   'event_payments','invoice_payments'
+   'event_payments','invoice_payments','categories','recurrence_requests','invite_attempts','scheduled_transfers'
   )
  ) then
   raise exception 'Já existe estrutura do aplicativo. Instalação cancelada sem alterar dados. Aplique somente as migrations pendentes.';
@@ -86,7 +86,6 @@ begin
 end $$;
 revoke all on function public.create_household(text,text),public.join_household(text,text),public.settle_event(uuid,uuid),public.transfer_funds(uuid,uuid,numeric) from public;
 grant execute on function public.create_household(text,text),public.join_household(text,text),public.settle_event(uuid,uuid),public.transfer_funds(uuid,uuid,numeric) to authenticated;
-
 
 -- 002_security_ledger.sql
 -- Apply after 001, first in a development project. No existing financial data is removed.
@@ -313,7 +312,6 @@ alter table public.financial_events add constraint event_title_valid check(lengt
 alter table public.financial_accounts add constraint account_name_valid check(length(trim(name)) between 1 and 120) not valid;
 
 
-
 -- 003_planning.sql
 create table public.properties(id uuid primary key default gen_random_uuid(),household_id uuid not null references public.households,name text not null check(length(trim(name)) between 1 and 120),estimated_value numeric(16,2) not null default 0 check(estimated_value>=0),unique(id,household_id));
 create table public.investments(id uuid primary key default gen_random_uuid(),household_id uuid not null references public.households,owner_id uuid not null references auth.users,name text not null,kind text not null,amount numeric(16,2) not null check(amount>=0),liquidity_date date,unique(id,household_id));
@@ -388,7 +386,6 @@ create policy purchases_read on public.card_purchases for select to authenticate
 revoke all on function public.create_card_purchase(uuid,uuid,text,numeric,date,integer),public.create_series(uuid,uuid,uuid,uuid,text,numeric,date,text,integer,text,uuid,boolean),public.edit_occurrence(uuid,numeric,date,boolean),public.audit_event() from public;
 grant execute on function public.create_card_purchase(uuid,uuid,text,numeric,date,integer),public.create_series(uuid,uuid,uuid,uuid,text,numeric,date,text,integer,text,uuid,boolean),public.edit_occurrence(uuid,numeric,date,boolean) to authenticated;
 
-
 -- 004_partial_payments.sql
 alter table public.financial_events add column paid_amount numeric(16,2) not null default 0 check(paid_amount>=0 and paid_amount<=amount);
 update public.financial_events set paid_amount=amount where status='settled';
@@ -444,7 +441,6 @@ grant execute on function public.pay_event(uuid,uuid,uuid,numeric,date,numeric) 
 drop policy events_insert on public.financial_events;
 create policy events_insert on public.financial_events for insert to authenticated with check(public.is_household_member(household_id) and created_by=auth.uid() and status='pending' and settled_at is null and paid_amount=0 and card_id is null and purchase_id is null and series_id is null and exists(select 1 from public.household_members m where m.household_id=financial_events.household_id and m.user_id=owner_id) and exists(select 1 from public.financial_accounts a where a.id=account_id and a.household_id=financial_events.household_id and a.active));
 
-
 -- 005_integrity.sql
 create function public.default_primary_account() returns trigger language plpgsql security definer set search_path=public as $$
 begin
@@ -456,7 +452,6 @@ revoke all on function public.default_primary_account() from public;
 alter table public.financial_accounts add constraint balance_finite check(balance<>'NaN'::numeric and abs(balance)<=9000000000000) not valid;
 alter table public.financial_events add constraint amount_finite check(amount<>'NaN'::numeric and amount<=9000000000000) not valid;
 alter table public.account_ledger add constraint ledger_amount_finite check(amount<>'NaN'::numeric and abs(amount)<=9000000000000) not valid;
-
 
 -- 006_invoice_payments.sql
 create table public.invoice_payments(id uuid primary key,household_id uuid not null references public.households,card_id uuid not null references public.credit_cards,due_date date not null,account_id uuid not null references public.financial_accounts,amount numeric(16,2) not null,paid_date date not null);
@@ -485,7 +480,6 @@ end $$;
 revoke all on function public.pay_invoice(uuid,uuid,date,uuid,numeric,date) from public;
 grant execute on function public.pay_invoice(uuid,uuid,date,uuid,numeric,date) to authenticated;
 
-
 -- 007_accounts.sql
 create function public.create_account(p_id uuid,p_household uuid,p_owner uuid,p_name text,p_balance numeric) returns void language plpgsql security definer set search_path=public as $$
 begin
@@ -499,6 +493,140 @@ end $$;
 revoke all on function public.create_account(uuid,uuid,uuid,text,numeric) from public;
 grant execute on function public.create_account(uuid,uuid,uuid,text,numeric) to authenticated;
 -- Direct inserts remain protected by RLS for legacy clients, but the app uses the retry-safe RPC.
+
+-- 008_modernization.sql
+-- Additive modernization; preserves historical events and balances.
+alter table public.financial_accounts add column color text not null default '#6366f1' check(color ~ '^#[0-9a-fA-F]{6}$');
+create function public.set_account_color(p_account uuid,p_color text) returns void language plpgsql security definer set search_path=public as $$
+begin
+ if p_color is null or p_color !~ '^#[0-9a-fA-F]{6}$' then raise exception 'Cor inválida';end if;
+ update financial_accounts set color=p_color where id=p_account and public.is_household_member(household_id);
+ if not found then raise exception 'Sem permissão';end if;
+end $$;
+create function public.rename_member(p_name text) returns void language plpgsql security definer set search_path=public as $$
+begin
+ if auth.uid() is null or p_name is null or length(trim(p_name)) not between 1 and 120 or p_name like '%@%' then raise exception 'Informe seu nome';end if;
+ update household_members set display_name=trim(p_name) where user_id=auth.uid();
+end $$;
+create table public.categories(id uuid primary key default gen_random_uuid(),household_id uuid not null references households,name text not null check(length(trim(name)) between 1 and 100),kind text not null check(kind in ('income','expense')),color text not null check(color ~ '^#[0-9a-fA-F]{6}$'),icon text not null check(icon in ('wallet','home','heart','car','shopping','briefcase')),active boolean not null default true,unique(household_id,kind,name));
+alter table categories enable row level security;
+create policy categories_read on categories for select to authenticated using(is_household_member(household_id));
+create policy categories_add on categories for insert to authenticated with check(is_household_member(household_id));
+create policy categories_edit on categories for update to authenticated using(is_household_member(household_id)) with check(is_household_member(household_id));
+-- No delete policy. Deactivation preserves all historic category labels.
+create table public.recurrence_requests(id uuid primary key,household_id uuid not null references households,parameters jsonb not null);
+alter table recurrence_requests enable row level security;
+create function public.schedule_events(p_id uuid,p_household uuid,p_owner uuid,p_account uuid,p_title text,p_amount numeric,p_due date,p_kind text,p_category text,p_variable boolean,p_unit text,p_every integer,p_end date,p_property uuid default null) returns void language plpgsql security definer set search_path=public as $$
+declare params jsonb;previous recurrence_requests%rowtype;d date;anchor date;i integer:=0;last_date date;
+begin
+ if not is_household_member(p_household) or not exists(select 1 from household_members where household_id=p_household and user_id=p_owner) or not exists(select 1 from financial_accounts where id=p_account and household_id=p_household and active) then raise exception 'Sem permissão';end if;
+ if p_id is null or p_amount is null or p_amount<=0 or p_amount<>round(p_amount,2) or p_title is null or length(trim(p_title)) not between 1 and 200 or p_due is null or p_kind is null or p_kind not in ('income','expense') or p_unit is null or p_unit not in ('once','days','months') or p_every is null or p_every not between 1 and 365 or p_category is null or length(p_category)>100 or p_variable is null or (p_end is not null and p_end<p_due) then raise exception 'Lançamento inválido';end if;
+ params:=jsonb_build_array(p_household,p_owner,p_account,p_title,p_amount,p_due,p_kind,p_category,p_variable,p_unit,p_every,p_end,p_property);
+ perform pg_advisory_xact_lock(hashtextextended(p_id::text,8));
+ select * into previous from recurrence_requests where id=p_id;
+ if found then if previous.household_id<>p_household or previous.parameters<>params then raise exception 'Chave já utilizada';end if;return;end if;
+ insert into recurrence_requests values(p_id,p_household,params);
+ last_date:=coalesce(p_end,p_due+interval '1 year');
+ if last_date>p_due+interval '5 years' then raise exception 'Limite de cinco anos';end if;
+ loop
+ if p_unit='months' then
+ anchor:=(date_trunc('month',p_due)+make_interval(months=>i*p_every))::date;
+ d:=anchor+least(extract(day from p_due)::int,extract(day from anchor+interval '1 month - 1 day')::int)-1;
+ else d:=p_due+i*p_every;end if;
+ exit when d>last_date;
+ if i>=2000 then raise exception 'Muitas ocorrências';end if;
+ insert into financial_events(household_id,created_by,owner_id,account_id,title,amount,due_date,kind,category,series_id,variable_amount,property_id) values(p_household,auth.uid(),p_owner,p_account,trim(p_title),p_amount,d,p_kind,p_category,p_id,p_variable,p_property);
+ exit when p_unit='once';i:=i+1;
+ end loop;
+end $$;
+create function public.edit_future(p_event uuid,p_amount numeric) returns void language plpgsql security definer set search_path=public as $$
+declare e financial_events%rowtype;
+begin
+ select * into e from financial_events where id=p_event for update;
+ if not found or not is_household_member(e.household_id) then raise exception 'Sem permissão';end if;
+ if p_amount is null or p_amount<=0 or p_amount<>round(p_amount,2) or e.series_id is null or e.card_id is not null then raise exception 'Série inválida';end if;
+ update financial_events set amount=p_amount where household_id=e.household_id and series_id=e.series_id and due_date>=e.due_date and status='pending' and paid_amount=0;
+end $$;
+create function public.estimate_variable() returns trigger language plpgsql security definer set search_path=public as $$
+begin
+ if new.variable_amount and new.series_id is not null and new.status='settled' and old.status<>'settled' then
+ update financial_events set amount=new.amount where series_id=new.series_id and household_id=new.household_id and due_date>new.due_date and status='pending' and paid_amount=0;
+ end if;return new;
+end $$;
+create trigger variable_estimate after update on financial_events for each row execute function estimate_variable();
+alter table household_invites add column revoked boolean not null default false;
+create policy invites_read on household_invites for select to authenticated using(is_household_member(household_id));
+create function public.issue_invite(p_household uuid,p_code text,p_hours integer) returns text language plpgsql security definer set search_path=public,extensions as $$
+declare code text;
+begin
+ if not is_household_member(p_household) then raise exception 'Sem permissão';end if;
+ if p_hours is null or p_hours not between 1 and 168 then raise exception 'Validade de 1 a 168 horas';end if;
+ code:=case when coalesce(trim(p_code),'')='' then upper(encode(gen_random_bytes(32),'hex')) else upper(trim(p_code)) end;
+ if code !~ '^[A-Z0-9-]{8,64}$' then raise exception 'Código deve ter de 8 a 64 letras, números ou hífen';end if;
+ insert into household_invites(token_hash,household_id,expires_at) values(encode(digest(code,'sha256'),'hex'),p_household,now()+make_interval(hours=>p_hours));
+ return code;
+exception when unique_violation then raise exception 'Código já utilizado. Escolha outro';
+end $$;
+create function public.revoke_invite(p_hash text) returns void language plpgsql security definer set search_path=public as $$
+begin
+ update household_invites set revoked=true where token_hash=p_hash and is_household_member(household_id);
+ if not found then raise exception 'Sem permissão';end if;
+end $$;
+-- Failed attempts must commit, so return false instead of raising for invalid codes.
+create table public.invite_attempts(user_id uuid primary key references auth.users,window_start timestamptz not null,attempts integer not null);
+alter table invite_attempts enable row level security;
+create function public.accept_invite(p_code text,p_name text) returns boolean language plpgsql security definer set search_path=public,extensions as $$
+declare invitation household_invites%rowtype;attempt invite_attempts%rowtype;
+begin
+ if auth.uid() is null then raise exception 'Não autenticado';end if;
+ perform pg_advisory_xact_lock(hashtextextended(auth.uid()::text,0));
+ if p_name is null or length(trim(p_name)) not between 1 and 120 or p_name like '%@%' then raise exception 'Informe seu nome';end if;
+ if exists(select 1 from household_members where user_id=auth.uid()) then raise exception 'Usuário já possui família';end if;
+ insert into invite_attempts values(auth.uid(),now(),0) on conflict do nothing;
+ select * into attempt from invite_attempts where user_id=auth.uid() for update;
+ if attempt.window_start<now()-interval '1 hour' then update invite_attempts set window_start=now(),attempts=0 where user_id=auth.uid();elsif attempt.attempts>=10 then return false;end if;
+ update invite_attempts set attempts=attempts+1 where user_id=auth.uid();
+ select * into invitation from household_invites where token_hash in(encode(digest(upper(trim(p_code)),'sha256'),'hex'),encode(digest(trim(p_code),'sha256'),'hex')) for update;
+ if not found or invitation.used_by is not null or invitation.revoked or invitation.expires_at<=now() then return false;end if;
+ perform 1 from households where id=invitation.household_id for update;
+ insert into household_members values(invitation.household_id,auth.uid(),trim(p_name));
+ update household_invites set used_by=auth.uid() where token_hash=invitation.token_hash;
+ return true;
+end $$;
+-- Close legacy invite endpoints to prevent bypass of revocation/rate limits.
+revoke execute on function public.join_household(text,text),public.create_invite(uuid) from authenticated;
+revoke all on function public.set_account_color(uuid,text),public.rename_member(text),public.schedule_events(uuid,uuid,uuid,uuid,text,numeric,date,text,text,boolean,text,integer,date,uuid),public.edit_future(uuid,numeric),public.estimate_variable(),public.issue_invite(uuid,text,integer),public.revoke_invite(text),public.accept_invite(text,text) from public;
+grant execute on function public.set_account_color(uuid,text),public.rename_member(text),public.schedule_events(uuid,uuid,uuid,uuid,text,numeric,date,text,text,boolean,text,integer,date,uuid),public.edit_future(uuid,numeric),public.issue_invite(uuid,text,integer),public.revoke_invite(text),public.accept_invite(text,text) to authenticated;
+notify pgrst,'reload schema';
+
+-- 009_scheduled_transfers.sql
+create table public.scheduled_transfers(id uuid primary key,household_id uuid not null references households,from_account uuid not null,to_account uuid not null,amount numeric(16,2) not null check(amount>0 and amount<>'NaN'::numeric),due_date date not null,status text not null default 'pending' check(status in ('pending','settled')),foreign key(from_account,household_id) references financial_accounts(id,household_id),foreign key(to_account,household_id) references financial_accounts(id,household_id),check(from_account<>to_account));
+alter table scheduled_transfers enable row level security;
+create policy scheduled_read on scheduled_transfers for select to authenticated using(is_household_member(household_id));
+create function public.schedule_transfer(p_id uuid,p_from uuid,p_to uuid,p_amount numeric,p_date date) returns void language plpgsql security definer set search_path=public as $$
+declare h uuid;previous scheduled_transfers%rowtype;
+begin
+ select household_id into h from financial_accounts where id=p_from and active;
+ if h is null or not is_household_member(h) or not exists(select 1 from financial_accounts where id=p_to and household_id=h and active) then raise exception 'Sem permissão';end if;
+ if p_id is null or p_date is null or p_amount is null or p_amount<=0 or p_amount<>round(p_amount,2) or p_amount='NaN'::numeric then raise exception 'Transferência inválida';end if;
+ perform pg_advisory_xact_lock(hashtextextended(p_id::text,9));
+ select * into previous from scheduled_transfers where id=p_id;
+ if found then if previous.household_id<>h or previous.from_account<>p_from or previous.to_account<>p_to or previous.amount<>p_amount or previous.due_date<>p_date then raise exception 'Chave já utilizada';end if;return;end if;
+ insert into scheduled_transfers(id,household_id,from_account,to_account,amount,due_date) values(p_id,h,p_from,p_to,p_amount,p_date);
+end $$;
+create function public.execute_transfer(p_id uuid) returns void language plpgsql security definer set search_path=public as $$
+declare t scheduled_transfers%rowtype;
+begin
+ select * into t from scheduled_transfers where id=p_id for update;
+ if not found or not is_household_member(t.household_id) then raise exception 'Sem permissão';end if;
+ if t.status='settled' then return;end if;
+ if t.due_date>(now() at time zone 'America/Fortaleza')::date then raise exception 'Confirme somente na data prevista ou depois';end if;
+ perform transfer_funds(t.from_account,t.to_account,t.amount,t.id);
+ update scheduled_transfers set status='settled' where id=p_id;
+end $$;
+revoke all on function schedule_transfer(uuid,uuid,uuid,numeric,date),execute_transfer(uuid) from public;
+grant execute on function schedule_transfer(uuid,uuid,uuid,numeric,date),execute_transfer(uuid) to authenticated;
+notify pgrst,'reload schema';
 
 
 notify pgrst, 'reload schema';

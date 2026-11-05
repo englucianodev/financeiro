@@ -17,3 +17,6 @@ export function transferSuggestions(accounts:{id:string;name:string;balance:numb
  for(const target of accounts){let needed=Math.max(0,-Math.round(minimum(target.id)*100));for(const donor of donors){if(donor.id===target.id||needed===0)continue;const amount=Math.min(needed,donor.available);if(amount>0){suggestions.push({from:donor.id,to:target.id,amount:amount/100});donor.available-=amount;needed-=amount;}}}
  return suggestions;
 }
+
+export type ScheduledTransfer={id:string;from_account:string;to_account:string;amount:number;due_date:string;status:string};
+export function transferFlows(transfers:ScheduledTransfer[]){return transfers.flatMap(t=>[{id:t.id,account_id:t.from_account,amount:-Number(t.amount),due_date:t.due_date,status:t.status},{id:t.id+'-to',account_id:t.to_account,amount:Number(t.amount),due_date:t.due_date,status:t.status}])}

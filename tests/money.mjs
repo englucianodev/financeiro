@@ -14,3 +14,6 @@ assert.throws(()=>project([],[],366,start));
 console.log('Projeções: vencidos, hoje, centavos, liquidações, transferências, déficit e ano bissexto OK');
 
 assert.deepEqual(transferSuggestions([account('a',1000),account('b',2000)],[{byAccount:{a:-500,b:700}},{byAccount:{a:100,b:900}}]),[{from:'b',to:'a',amount:500}]);
+
+const six=project([account('a',1000)],[event('past','a',-100,'2026-11-05'),event('next','a',200,'2026-12-05')],180,start);
+assert.equal(six.slice(0,30).length,30);assert.equal(six[29].date,'2026-12-04');assert.equal(six[29].total,900);assert.equal(six[30].date,'2026-12-05');assert.equal(six[30].total,1100);assert.equal(six[179].total,1100);

@@ -12,7 +12,7 @@ async function seed(page,{hasFamily=true,membershipError=null,creationError=null
  if(url.pathname.endsWith('/rpc/create_household')){if(creationError)return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify(creationError)});linked=true;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(house)});}
  if(url.pathname.endsWith('/household_members')&&membershipError)return route.fulfill({status:403,contentType:'application/json',body:JSON.stringify(membershipError)});
  if(url.pathname.endsWith('/user'))data=user;else if(url.pathname.endsWith('/household_members'))data=url.searchParams.get('select')==='household_id'?(linked?{household_id:house}:null):[{user_id:ana,display_name:'Ana'},{user_id:bruno,display_name:'Bruno'}];else if(url.pathname.endsWith('/financial_accounts'))data=accounts;else if(url.pathname.endsWith('/financial_events'))data=[{id:'expense',title:'Energia',amount:200,paid_amount:0,due_date:'2026-11-06',account_id:'b',owner_id:bruno,status:'pending',kind:'expense',category:'Casa'}];await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});});
- await page.goto('/');await expect(page.getByRole('heading',{name:'Finanças a Dois',exact:true})).toBeVisible();if(membershipError)await expect(page.getByRole('button',{name:'Tentar novamente'})).toBeVisible();else if(hasFamily)await expect(page.getByRole('heading',{name:'Nova receita ou despesa'})).toBeVisible();else await expect(page.getByRole('button',{name:'Criar família',exact:true})).toBeVisible();
+ await page.goto('/');if(hasFamily)await expect(page.getByRole('heading',{name:membershipError?'Finanças a Dois':'Finanças de Ana e Bruno',exact:true})).toBeVisible();if(membershipError)await expect(page.getByRole('button',{name:'Tentar novamente'})).toBeVisible();else if(hasFamily)await expect(page.getByRole('heading',{name:'Nova receita ou despesa'})).toBeVisible();else {await expect(page.getByRole('button',{name:'Criar família',exact:true})).toBeVisible();await page.getByPlaceholder('Nome de exibição').fill('Ana');}
 }
 test('responsável sugere conta principal e mantém escolha manual após recarga',async({page})=>{
  await seed(page);const form=page.locator('form').filter({has:page.getByPlaceholder('Descrição')});
@@ -46,7 +46,7 @@ test('calendário, relatórios, simulador e tema em celular',async({page})=>{
  await page.setViewportSize({width:390,height:844});await seed(page);
  await expect(page.getByRole('heading',{name:/Calendário/})).toBeVisible();
  await page.getByRole('button',{name:'Relatórios',exact:true}).click();await expect(page.getByRole('heading',{name:'Relatório por período'})).toBeVisible();
- await page.getByRole('button',{name:'Simulador',exact:true}).click();await expect(page.getByRole('heading',{name:'Simulador de 365 dias'})).toBeVisible();
+ await page.getByRole('button',{name:'Simulador',exact:true}).click();await expect(page.getByRole('heading',{name:'Simulador por data'})).toBeVisible();
  await page.getByRole('button',{name:'Alternar tema'}).click();await expect(page.locator('html')).toHaveClass('dark');
  await expect(page.locator('body')).toHaveJSProperty('scrollWidth',390);
 });
@@ -74,4 +74,26 @@ test('falha de consulta não oferece criar outra família e permite tentar novam
  await page.route('**/rest/v1/household_members?**',route=>{const url=new URL(route.request().url());return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(url.searchParams.get('select')==='household_id'?{household_id:house}:[{user_id:ana,display_name:'Ana'}])})});
  await page.getByRole('button',{name:'Tentar novamente'}).click();
  await expect(page.getByRole('heading',{name:'Nova receita ou despesa'})).toBeVisible();
+});
+
+test('projeção navega seis períodos acumulados',async({page})=>{
+ await seed(page);const chart=page.locator('#projection');
+ await expect(chart.getByRole('button',{name:'Período anterior'})).toBeDisabled();
+ await expect(chart).toContainText('dias 1 a 30');
+ for(let i=0;i<5;i++)await chart.getByRole('button',{name:'Próximo período'}).click();
+ await expect(chart).toContainText('dias 151 a 180');
+ await expect(chart.getByRole('button',{name:'Próximo período'})).toBeDisabled();
+});
+test('salário gera previsão mensal sem débito bancário',async({page})=>{
+ await seed(page);await page.getByRole('button',{name:'Nova movimentação'}).click();await page.getByRole('button',{name:'Novo salário'}).click();
+ const form=page.locator('#new-entry');await form.getByPlaceholder('Descrição').fill('Salário PM');await form.getByPlaceholder('Valor',{exact:true}).fill('6000');
+ const request=page.waitForRequest(r=>r.url().endsWith('/rpc/schedule_events'));await form.getByRole('button',{name:'Salvar lançamento'}).click();
+ expect((await request).postDataJSON()).toMatchObject({p_kind:'income',p_unit:'months',p_every:1,p_amount:6000,p_category:'Salário'});
+});
+test('cores e categorias são persistidas e simulador aceita data',async({page})=>{
+ await page.setViewportSize({width:390,height:844});await seed(page);
+ const color=page.getByLabel('Cor de Conta Ana');await color.fill('#ff9900');const saved=page.waitForRequest(r=>r.url().endsWith('/rpc/set_account_color'));await color.blur();expect((await saved).postDataJSON()).toMatchObject({p_color:'#ff9900',p_account:'a'});
+ const prefs=page.locator('#preferences');await prefs.getByLabel('Categoria',{exact:true}).fill('Animais');const created=page.waitForRequest(r=>r.url().includes('/rest/v1/categories')&&r.method()==='POST');await prefs.getByRole('button',{name:'Criar categoria'}).click();expect((await created).postDataJSON()).toMatchObject({name:'Animais'});
+ await page.getByRole('button',{name:'Simulador',exact:true}).click();await expect(page.getByLabel('Simular até a data')).toBeVisible();
+ await page.evaluate(()=>window.scrollTo(0,0));await expect(page.locator('body')).toHaveJSProperty('scrollWidth',390);await page.screenshot({path:'test-results/dashboard-mobile.png'});
 });
