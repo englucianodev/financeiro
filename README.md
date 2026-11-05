@@ -7,8 +7,8 @@ Aplicação Next.js + Supabase com cinco telas: **Início, Pendências, Calendá
 1. Node.js 20.9+; execute `npm ci`.
 2. Copie `.env.example` para `.env.local` com URL do Supabase e chave pública/anon/publishable. Nunca use `service_role` em `NEXT_PUBLIC_*`.
 3. Configure Supabase Auth com Site URL e redirecionamentos do domínio.
-4. **Banco com migrations 001–010:** revise e aplique somente `011_editable_categories.sql`. Se a 010 ainda não tiver sido aplicada, execute-a antes da 011. Se houver etapas anteriores pendentes, aplique-as primeiro, em ordem. Faça backup antes de atualizar banco publicado.
-5. **Banco sem estrutura do aplicativo:** use `supabase/setup.sql` (001–011 em transação, com proteção contra instalação sobre tabelas existentes). Nunca use o instalador para atualizar banco existente.
+4. **Banco com migrations 001–012:** revise e aplique somente `013_properties_and_investments.sql`. Se houver migrations anteriores pendentes, execute-as primeiro em ordem. Faça backup antes de atualizar banco publicado.
+5. **Banco sem estrutura do aplicativo:** use `supabase/setup.sql` (001–013 em transação, com proteção contra instalação sobre tabelas existentes). Nunca use o instalador para atualizar banco existente.
 6. Execute `npm run dev` ou publique na Vercel com preset Next.js, diretório contendo `package.json`, build `npm run build` e saída automática. Informe as duas variáveis públicas antes do deploy.
 
 Nenhuma migration foi aplicada remotamente nesta implementação. A homologação no Supabase hospedado e o deploy na Vercel continuam necessários.
@@ -32,8 +32,8 @@ Referência: [Supabase Cron](https://supabase.com/docs/guides/cron/quickstart).
 - **Início:** pendências em atraso e do dia, sem filtros, além do saldo disponível sem contas de investimento, saldos separados de uso diário e despesas recorrentes; investimentos em menor destaque. Resumo de pagas/recebidas/atrasadas dos últimos cinco dias, anteriores em lista rolável, filtros, barras de entradas/saídas previstas e projeção por conta até uma data escolhida (até 365 dias).
 - **Pendências:** próximos sete dias; filtro de atrasadas e filtros por nome/categoria, entrada/saída e mês. Outros dias ficam em lista rolável expansível. Totais de entradas, saídas, soma e saldo do filtro selecionado, com mês/ano em lista cronológica. Checklist do mês vigente disponível para copiar, baixar como TXT ou abrir o compartilhamento nativo e selecionar Telegram. O usuário escolhe a conversa e confirma o envio; nenhum bot ou credencial do Telegram é necessário.
 - **Calendário:** quadros maiores, descrições sem valores, indicação de confirmação e painel com todos os compromissos do dia. Investimentos e transferências preservam identificação das contas.
-- **Contas:** transferências imediatas ou agendadas e adicionar/editar nome, titular, finalidade, cor, saldo e preferência de conta principal. A opção de principal aparece somente no formulário. Ajustes de saldo são auditados. Conta com histórico, cartão ou transferência preserva o titular; crie outra conta para outra pessoa.
-- **Mais:** opções internas de Lançamentos, Planejamento, Histórico e Personalização. Cada opção exibe somente seus formulários. Planejamento reúne fluxo de caixa, cartões, patrimônio, relatórios e simulador; Personalização reúne categorias, nomes e convites.
+- **Contas:** transferências imediatas ou agendadas dentro da edição da conta de origem e adicionar/editar nome, titular, finalidade, cor, saldo e preferência de conta principal. A opção de principal aparece somente no formulário. Ajustes de saldo são auditados. Conta com histórico, cartão ou transferência preserva o titular; crie outra conta para outra pessoa.
+- **Mais:** opções internas de Lançamentos, Planejamento, Histórico e Personalização. Cada opção exibe somente seus formulários. Planejamento reúne fluxo de caixa, cartões, imóveis, relatórios e simulador; Personalização reúne categorias, nomes e convites.
 
 Categorias são ordenadas alfabeticamente em português em cadastros, filtros e relatórios. Novas previsões exigem conta ativa do próprio responsável no frontend e no servidor. Pagamentos podem manter conta efetiva diferente da prevista, preservando o histórico.
 
@@ -70,3 +70,19 @@ Cadastros de investimentos continuam informativos e são apresentados separados 
 - A edição de conta abre em janela com foco no nome, cancelamento por Escape e retorno do foco. O movimento de hover nos cartões/botões foi estabilizado para evitar oscilação do cursor. Erros de saldo desatualizado continuam sendo tratados pelo servidor sem sobrescrever movimentações.
 - Menu “+”: somente Despesa, Receita e Transferência. Transferências ficam na aba Contas; salário continua em Mais → Lançamentos.
 - Migration 011 transforma as categorias padrão em registros editáveis por grupo, sem duplicar nomes já cadastrados. Novos grupos recebem a mesma lista inicial. Excluir uma categoria remove a opção dos cadastros, preservando os rótulos dos lançamentos históricos. Ela não reaparece pelo fallback do frontend. A migration não altera valores ou saldos.
+
+## Ajuste rápido de saldo e menu “+”
+
+Em Contas, toque no valor exibido para abrir somente o campo Novo saldo, já focado. Salvar registra um ajuste no ledger e atualiza os saldos; Cancelar/Escape preservam o valor. A RPC da migration 012 modifica o saldo sem sobrescrever alterações concorrentes em nome, cor, titular ou finalidade. Mantém prevenção de duplicidade e rejeita saldo desatualizado.
+
+O menu “+” fecha ao tocar/clicar fora, mover o foco para fora ou pressionar Escape. Tocar fora também continua executando a ação escolhida na tela; não há uma camada que bloqueie os outros controles.
+
+## Formulário único, transferências pela conta e imóveis
+
+- Mais → Lançamentos apresenta um único seletor Tipo: Despesa, Receita, Salário ou Investimento. Os campos aparecem conforme a opção. Salário mantém previsão mensal e dia de pagamento; investimento usa descrição, valor, responsável, tipo de investimento e data de disponibilidade.
+- Os investimentos anteriores continuam cadastrados e aparecem ao selecionar Investimento. Esse cadastro é patrimonial/informativo, como antes: não debita contas nem gera receita/despesa. Para movimentar dinheiro, use transferências entre contas, inclusive contas classificadas como investimento.
+- Para transferir, abra Contas → Editar na conta que vai enviar → Transferir. A origem fica fixa, e são informados valor, conta recebedora e data. O destino não pode ser a própria origem. Datas futuras preservam o agendamento; os agendamentos e sua confirmação ficam na edição da respectiva conta de origem.
+- O atalho Transferência no “+” leva a Contas e orienta selecionar Editar na conta de origem. Não há formulário geral de transferências na tela.
+- O quadro inicial se chama Vencimentos e Atrasos, sem subtítulo de prioridade/filtros.
+- Planejamento → Imóveis substitui Patrimônio e contém apenas imóveis. Cada imóvel possui cidade, tipo Alugado/Próprio, status Quitado/Financiado, dívida em reais e parcelas pendentes em meses. Parcelas aparecem somente para Próprio + Financiado; imóveis quitados têm dívida zero, e as demais combinações não mantêm parcelas ocultas.
+- A migration 013 preserva registros anteriores e vínculos de despesas com imóveis, adiciona os campos e RPCs com validação/RLS e evita cadastro duplicado de investimento em tentativas repetidas. Imóveis legados começam como Próprio/Quitado, dívida zero e cidade não informada; podem ser editados para completar os dados.

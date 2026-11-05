@@ -9,6 +9,7 @@ const rpc=async(name,args)=>scalar(`select public.${name}(${args.map((_,i)=>'$'+
 const uid=[randomUUID(),randomUUID(),randomUUID()];
 await db.exec(`create schema extensions;create extension pgcrypto with schema extensions;create role authenticated;create role anon;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;`);
 for(const id of uid)await db.query('insert into auth.users values($1)',[id]);
+const legacyProperty=randomUUID(),legacyInvestment=randomUUID();
 const legacyUser=randomUUID(),legacyHouse=randomUUID(),legacyAccount=randomUUID(),legacyEvent=randomUUID();
 await db.query('insert into auth.users values($1)',[legacyUser]);
 for(const file of (await readdir('supabase/migrations')).sort()){
@@ -18,9 +19,11 @@ for(const file of (await readdir('supabase/migrations')).sort()){
  await db.query('insert into household_members values($1,$2,$3)',[legacyHouse,legacyUser,'Legado']);
  await db.query('insert into financial_accounts(id,household_id,owner_id,name,balance) values($1,$2,$3,$4,800)',[legacyAccount,legacyHouse,legacyUser,'Legado']);
  await db.query("insert into financial_events(id,household_id,created_by,owner_id,account_id,title,amount,due_date,kind,status) values($1,$2,$3,$3,$4,'Legado',200,'2026-01-01','expense','settled')",[legacyEvent,legacyHouse,legacyUser,legacyAccount]);
- }console.log('Migration',file,'OK');
+ }
+ if(file==='012_quick_balance.sql'){await db.query("insert into properties(id,household_id,name,estimated_value) values($1,$2,'Imóvel legado',12345.67)",[legacyProperty,legacyHouse]);await db.query("insert into investments(id,household_id,owner_id,name,kind,amount) values($1,$2,$3,'CDB legado','CDB',800)",[legacyInvestment,legacyHouse,legacyUser]);}
+ console.log('Migration',file,'OK');
 }
-assert.equal(Number(await scalar('select balance as value from financial_accounts where id=$1',[legacyAccount])),800);
+assert.equal(Number(await scalar('select balance as value from financial_accounts where id=$1',[legacyAccount])),800);assert.equal(await scalar('select tenure as value from properties where id=$1',[legacyProperty]),'owned');assert.equal(await scalar('select city as value from properties where id=$1',[legacyProperty]),'');assert.equal(Number(await scalar('select amount as value from investments where id=$1',[legacyInvestment])),800);
 assert.equal(Number(await scalar('select sum(amount) as value from account_ledger where account_id=$1',[legacyAccount])),800);
 
 // Match Supabase default table grants; security must rely on RLS, not missing grants.
@@ -113,5 +116,25 @@ const correctionKey=randomUUID();await rpc('correct_income',[correctionKey,autoE
 await as(uid[0]);
 const defaultId=await scalar("select id as value from categories where household_id=$1 and name='Energia' and kind='expense'",[h]);assert.ok(defaultId);
 await db.query("update categories set name='Conta de luz' where id=$1",[defaultId]);await rpc('delete_category',[defaultId]);assert.equal(await scalar('select active as value from categories where id=$1',[defaultId]),false);assert.ok(await scalar('select deleted_at as value from categories where id=$1',[defaultId]));assert.ok(await scalar("select count(*)::int as value from financial_events where household_id=$1 and category='Energia'",[h]));await as(uid[2]);await assert.rejects(()=>rpc('delete_category',[defaultId]));
+await as(uid[0]);
+const quickBefore=Number(await scalar('select balance as value from financial_accounts where id=$1',[a]));
+await rpc('save_account',[randomUUID(),a,'Nome preservado',uid[0],'#123456',true,'recurring',quickBefore,quickBefore]);
+const quickKey=randomUUID(),quickArgs=[quickKey,a,quickBefore+12.34,quickBefore];
+await rpc('adjust_account_balance',quickArgs);await rpc('adjust_account_balance',quickArgs);
+assert.equal(Number(await scalar('select balance as value from financial_accounts where id=$1',[a])),quickBefore+12.34);
+assert.equal(await scalar('select name as value from financial_accounts where id=$1',[a]),'Nome preservado');
+assert.equal(await scalar('select color as value from financial_accounts where id=$1',[a]),'#123456');
+await rpc('set_account_color',[a,'#654321']);await rpc('adjust_account_balance',quickArgs);
+assert.equal(await scalar('select color as value from financial_accounts where id=$1',[a]),'#654321');
+assert.equal(await scalar("select count(*)::int as value from account_ledger where account_id=$1 and operation_key=$2",[a,'adjustment:'+quickKey]),1);
+await assert.rejects(()=>rpc('adjust_account_balance',[randomUUID(),a,quickBefore+1,quickBefore]));
+assert.equal(Number(await scalar('select sum(amount) as value from account_ledger where account_id=$1',[a])),quickBefore+12.34);
+await as(uid[2]);await assert.rejects(()=>rpc('adjust_account_balance',quickArgs));
+await as(uid[0]);
+const propertyId=randomUUID();const propertyArgs=[propertyId,h,'Apartamento','Fortaleza','owned','financed',300000,150000,120];await rpc('save_property',propertyArgs);await rpc('save_property',propertyArgs);assert.equal(await scalar('select count(*)::int as value from properties where id=$1',[propertyId]),1);assert.equal(await scalar('select pending_installments as value from properties where id=$1',[propertyId]),120);
+await assert.rejects(()=>rpc('save_property',[propertyId,h,'Apartamento','Fortaleza','owned','financed',300000,150000,null]));await assert.rejects(()=>rpc('save_property',[propertyId,h,'Apartamento','Fortaleza','rented','financed',300000,150000,120]));await assert.rejects(()=>rpc('save_property',[propertyId,h,'Apartamento','Fortaleza','owned','paid',300000,150000,null]));
+await rpc('save_property',[propertyId,h,'Casa alugada','Fortaleza','rented','financed',0,500,null]);assert.equal(await scalar('select pending_installments as value from properties where id=$1',[propertyId]),null);
+const investmentId=randomUUID(),assetBalance=Number(await scalar('select sum(balance) as value from financial_accounts'));const eventCount=await scalar('select count(*)::int as value from financial_events');const investmentArgs=[investmentId,h,uid[0],'Reserva CDB','CDB',1500,'2027-01-01'];await rpc('register_investment',investmentArgs);await rpc('register_investment',investmentArgs);assert.equal(await scalar('select count(*)::int as value from investments where id=$1',[investmentId]),1);assert.equal(Number(await scalar('select sum(balance) as value from financial_accounts')),assetBalance);assert.equal(await scalar('select count(*)::int as value from financial_events'),eventCount);await assert.rejects(()=>rpc('register_investment',[investmentId,h,uid[0],'Reserva CDB','CDB',1600,'2027-01-01']));
+await as(uid[2]);assert.equal(await scalar('select count(*)::int as value from properties where id=$1',[propertyId]),0);await assert.rejects(()=>rpc('save_property',[propertyId,foreign,'Fraude','Fortaleza','owned','paid',0,0,null]));await assert.rejects(()=>rpc('register_investment',investmentArgs));
 console.log('RLS, convites, recorrências, pagamentos parciais, estorno, idempotência, transferências e cartões OK');
 await db.close();

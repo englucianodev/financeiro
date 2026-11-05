@@ -1,3 +1,20 @@
+## Formulário único, transferências no editor e imóveis — alteração atual
+
+- Transferir dentro da edição da conta de origem, com destino, valor, data, idempotência e agendamentos preservados. Removido formulário geral. Atalho “+” leva à escolha da conta de origem.
+- Lançamento único com tipos Despesa, Receita, Salário e Investimento e campos condicionais, sem os três botões separados. Investimentos informativos anteriores preservados na mesma tabela, listados no tipo Investimento.
+- Vencimentos e Atrasos no Início, sem texto de prioridade.
+- Patrimônio renomeado para Imóveis, com cidade, tipo, status, dívida e parcelas apenas para próprio financiado. Cadastro e edição preservam identificadores e vínculos anteriores.
+- Nova migration `013_properties_and_investments.sql`; aplicar somente após as anteriores. `setup.sql` atualizado para banco novo. Nenhum dado real ou deploy foi alterado.
+- Validação desta etapa: TypeScript, testes financeiros, banco PGlite 001–013, instalador, 30 testes de navegador e build de produção passaram. Tela de imóveis em 390px inspecionada.
+
+## Ajuste rápido de saldo e menu — nova alteração
+
+- Saldo clicável em Contas: diálogo com somente Novo saldo, foco automático, salvar e cancelar.
+- RPC `adjust_account_balance` na migration `012_quick_balance.sql`, reutilizando ledger, validação de saldo esperado e chave de repetição, preservando os dados atuais da conta.
+- Menu “+” fecha com toque/clique/foco fora ou Escape, permitindo executar o controle externo.
+- Validação desta alteração: TypeScript, banco PGlite (incluindo idempotência, saldo desatualizado, preservação de metadados e isolamento), instalador e oito testes de navegador passaram.
+- Para publicar: aplicar migrations pendentes, incluindo 012, e novo deploy do frontend. Nenhuma alteração foi feita no banco remoto.
+
 # Continuidade — senhas e ajustes de usabilidade
 
 ## Implementado no código
