@@ -1,39 +1,63 @@
-# Finanças a Dois — MVP inicial
+# Finanças a Dois
 
-Aplicação Next.js + Supabase para duas pessoas gerenciarem contas, receitas e despesas avulsas, pagamentos, transferências internas e previsão diária de saldos por conta (90 dias).
+Aplicação Next.js, React, TypeScript e Supabase para finanças compartilhadas de duas pessoas.
 
-## Iniciar
-1. Instale Node.js 20 ou superior.
-2. Execute `npm install`.
-3. Copie `.env.example` para `.env.local` e preencha a URL e a chave pública do Supabase.
-4. No Supabase SQL Editor, **revise** e execute `supabase/migrations/001_initial.sql` em projeto de testes primeiro.
-5. No Supabase Auth, configure URL do site e redirecionamentos; habilite autenticação por e-mail.
-6. Execute `npm run dev` e abra http://localhost:3000.
-7. Crie a primeira conta, crie a família e compartilhe o código de convite com a segunda pessoa.
-8. Para deploy, importe o repositório na Vercel e configure as duas variáveis de ambiente.
+## Executar localmente
 
-## Implementado
-- Autenticação por e-mail/senha (Supabase Auth).
-- Núcleo familiar compartilhado, com dois membros.
-- Contas bancárias individuais, saldo e preferência de conta principal.
-- Lançamentos avulsos de receita/despesa, atribuição ao responsável e conta prevista.
-- Confirmação transacional de pagamentos/recebimentos.
-- Transferências internas com movimentação entre saldos, sem alterar saldo consolidado.
-- Projeção diária de 90 dias, alertas de saldo negativo e menor saldo por conta.
-- RLS para isolamento por núcleo familiar.
+1. Instale Node.js 20.9 ou superior e execute `npm ci`.
+2. Copie `.env.example` para `.env.local` e informe a URL e a chave pública do Supabase.
+3. Em um Supabase de desenvolvimento, revise e aplique **todas** as migrations de `supabase/migrations` na ordem numérica, de `001` a `007`. Em banco existente, aplique somente as ainda não executadas. Não reaplique scripts nem substitua tabelas existentes.
+4. Configure autenticação por e-mail, URL do site e redirecionamentos no Supabase Auth.
+5. Execute `npm run dev` e abra [localhost:3000](http://localhost:3000).
+6. Cadastre o primeiro usuário e crie a família. Gere um convite de uso único, válido por 24 horas, para o segundo usuário.
 
-## Ainda NÃO implementado (para o Codex)
-- Recorrências e edição de ocorrências, cartões e faturas parceladas.
-- Investimentos, imóveis, calendário, relatórios e simulador.
-- Convites seguros com token expirável: o código de família é apenas provisório e **não deve ser usado com dados reais**.
-- Auditoria completa, estorno, conciliação e testes automatizados.
-- Lançamentos já pagos no cadastro, agendamento de transferências e troca de conta no modal de pagamento.
-- Projeção de 6/12 meses e lógica de reserva financeira.
-- Contabilidade com livro-razão imutável (o MVP guarda saldo materializado; evoluir antes de produção).
-- Paginação, regras de valores variáveis, validação de formulários com Zod.
+Use somente a chave pública/publishable ou anon no frontend. Nunca use `service_role` nas variáveis `NEXT_PUBLIC_*`.
 
-## Atenção
-Este é um protótipo funcional inicial, **não um produto pronto para dados financeiros reais**. Use contas e dados fictícios até passar por revisão de segurança, migrações, testes e auditoria de lançamentos. A projeção parte do saldo real atual e considera apenas lançamentos pendentes com vencimento futuro; lançamentos pendentes vencidos precisam de tratamento de atraso na próxima etapa. Saldos negativos são permitidos para representar déficits. A chave de acesso do Supabase no frontend deve ser a chave pública, nunca a service_role.
+## Funcionalidades existentes
 
-## Próxima tarefa sugerida ao Codex
-Leia `CODEX_TAREFAS.md`, execute os testes de instalação/build e implemente os itens na ordem indicada, preservando a migration inicial e sem destruir dados.
+- Login individual, família com até dois membros, convites aleatórios armazenados por hash e isolamento por RLS.
+- Contas por pessoa, conta principal transacional e sugestão da conta conforme o responsável, preservando escolha manual durante recargas.
+- Receitas/despesas avulsas ou mensais com até 60 ocorrências, categoria, imóvel, valor estimado variável e edição/cancelamento individual.
+- Pagamentos integrais/parciais com conta, valor e data efetivos; estorno que preserva histórico e reabre a pendência.
+- Livro de movimentações, auditoria de alterações dos lançamentos e operações financeiras por RPC transacional com chaves de repetição.
+- Transferências internas sem alterar o saldo consolidado.
+- Cartões, fechamento/vencimento, compras parceladas e pagamento integral/parcial de faturas sem duplicar o débito bancário.
+- Projeção diária de 30/60/90/180/365 dias por conta, pessoa e casal; atrasados entram hoje. Alertas de primeiro déficit, menor saldo e sugestões de transferências.
+- Calendário mensal, relatórios por vencimento com filtros e gráfico por categoria, cadastro informativo de imóveis/investimentos e simulador de receitas, despesas e transferências.
+- Tema claro/escuro e interface responsiva em português.
+
+## Verificação
+
+```sh
+npm run typecheck
+npm test
+npm run test:db
+npm run test:e2e
+npm run build
+```
+
+`test:db` aplica todas as migrations em PostgreSQL embarcado PGlite e verifica RLS, RPCs, preservação dos saldos legados, pagamentos, estornos, recorrências e cartões. Não conecta ao seu Supabase.
+
+Os testes Playwright usam respostas simuladas do Supabase e sessão em cookie, sem dados reais. No Windows usam Microsoft Edge instalado; em outros sistemas instale Chromium com `npx playwright install chromium`. O servidor de teste usa a porta 3100.
+
+Validação local em 05/11/2026: TypeScript, cálculos financeiros, banco, três testes E2E no Edge e build de produção passaram.
+
+## Implantação na Vercel
+
+- Importe o repositório e selecione `financas-a-dois` como Root Directory se o repositório contiver a pasta acima do app.
+- Use o preset Next.js e o comando de build `npm run build`.
+- Configure `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY` em cada ambiente e faça novo build após alterações.
+- Aplique as migrations no Supabase de destino, em ordem e com backup antes de atualizar banco existente.
+- Ajuste Site URL e URLs de redirecionamento no Supabase Auth para o domínio publicado.
+- Valide com duas contas de teste: convite, isolamento entre famílias, pagamento, estorno e transferência antes de inserir dados reais.
+
+## Limitações conhecidas
+
+- Ainda precisa de homologação no Supabase hospedado e na Vercel. Testes locais com PGlite e API simulada não substituem essa validação nem comprovam concorrência com várias conexões.
+- Recorrências geram um lote finito; não há edição futura em lote nem atualização automática pelo último valor variável confirmado.
+- Transferências futuras existem no simulador; não há agendamento persistente. Não há reserva mínima configurável, conciliação bancária, paginação ou exportação dos relatórios.
+- Investimentos são informativos e ficam fora do saldo disponível, inclusive os líquidos. O resgate deve ser registrado na conta quando recebido, evitando somar o mesmo dinheiro duas vezes.
+- Relatórios usam vencimento (competência); não fornecem extrato por data/conta efetiva de pagamento. O saldo de calendário é projetado de hoje até 365 dias; datas anteriores não reconstituem o saldo histórico.
+- A auditoria cobre lançamentos e movimentações; não existe ainda interface de consulta completa ao ledger ou auditoria de todos os cadastros.
+
+Consulte `CODEX_TAREFAS.md` para o ponto de continuidade.

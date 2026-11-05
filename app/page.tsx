@@ -108,7 +108,7 @@ function FinanceApp(){
 
  const fd=new FormData(e.currentTarget);const signature=JSON.stringify(["account",...fd.entries()]);const {error}=await db.rpc("create_account",{p_id:requestKey(signature),p_household:household,p_owner:String(fd.get("owner")),p_name:String(fd.get("name")),p_balance:Number(fd.get("balance"))});
 
- if(error)throw error;await load(user)})}
+ if(error)throw error;retryKeys.current.delete(signature);await load(user)})}
 
  async function addEvent(e:React.FormEvent){e.preventDefault();if(!user||!household)return;await act(async()=>{
 

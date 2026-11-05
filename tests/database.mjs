@@ -57,6 +57,16 @@ const purchase=randomUUID();await rpc('create_card_purchase',[purchase,card,'Gel
 assert.equal(Number(await scalar('select sum(amount) as value from financial_events where purchase_id=$1',[purchase])),100);
 assert.equal(await scalar('select min(due_date)::text as value from financial_events where purchase_id=$1',[purchase]),'2026-03-05');
 assert.equal(Number(await scalar('select sum(balance) as value from financial_accounts')),1100);
+const invoicePayment=randomUUID();
+await rpc('pay_invoice',[invoicePayment,card,'2026-03-05',a,10,'2026-03-05']);
+await rpc('pay_invoice',[invoicePayment,card,'2026-03-05',a,10,'2026-03-05']);
+assert.equal(Number(await scalar('select sum(balance) as value from financial_accounts')),1090);
+await assert.rejects(()=>rpc('pay_invoice',[invoicePayment,card,'2026-03-05',a,11,'2026-03-05']));
+await assert.rejects(()=>rpc('pay_invoice',[randomUUID(),card,'2026-03-05',a,100,'2026-03-05']));
+assert.equal(Number(await scalar('select sum(balance) as value from financial_accounts')),1090);
+const installment=await scalar('select id as value from financial_events where purchase_id=$1 order by due_date limit 1',[purchase]);
+await rpc('reverse_event',[installment]);
+assert.equal(Number(await scalar('select sum(balance) as value from financial_accounts')),1100);
 await as(uid[2]);
 assert.equal(await scalar('select count(*)::int as value from financial_events'),0);
 assert.equal(await scalar('select count(*)::int as value from account_ledger'),0);
