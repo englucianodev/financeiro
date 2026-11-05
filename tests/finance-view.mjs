@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import {checklist,dailyMovements,alphabetic} from '../.test-build/finance-view.js';
+import {checklist,dailyMovements,alphabetic,propertyEquity} from '../.test-build/finance-view.js';
+assert.equal(propertyEquity([{tenure:'owned',estimated_value:300000,debt:150000},{tenure:'owned',estimated_value:50.10,debt:80.20},{tenure:'rented',estimated_value:1000000},{tenure:'third_party',estimated_value:800000}]),149969.90);
+assert.equal(propertyEquity([]),0);
 const make=(id,title,date,status='pending',paid=0)=>({id,title,due_date:date,status,paid_amount:paid,kind:'expense',amount:100,account_id:'a',owner_id:'one'});
 const text=checklist([make('1','Luz','2026-11-01'),make('2','Internet','2026-11-03','settled',100),make('3','Condomínio','2026-12-01'),make('4','Cancelada','2026-11-02','cancelled')],'2026-11','2026-11-05');
 assert.match(text,/01 · Luz.*Em atraso/);assert.match(text,/☑ 03 · Internet.*Pago/);assert.doesNotMatch(text,/Condomínio|Cancelada/);

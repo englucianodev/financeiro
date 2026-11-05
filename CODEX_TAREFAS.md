@@ -37,3 +37,14 @@ Nenhuma configuração Auth ou migration foi aplicada remotamente. Continuam vá
 ## Validação local
 
 24 testes de navegador passaram, incluindo retorno PKCE, token hash, link expirado, troca autenticada de senha, persistência, modal de edição, totais, navegação e exclusão de categorias padrão. Verificação de tipos, testes financeiros, banco (001–011, RLS/RPCs) e instalador passaram. Edição de conta em 390px inspecionada visualmente.
+
+# Continuidade — lançamentos recorrentes e imóveis
+
+- A edição de previsão permite trocar a conta, limitada ao responsável, e ajustar valor, vencimento e vínculo com imóvel. Salvar e excluir oferecem Só este lançamento ou Este e os próximos. Exclusão com confirmação cancela previsões sem apagar a auditoria. Pagamentos confirmados e parciais são preservados.
+- Alterar recorrência é opcional: intervalo em dias/meses ou encerrar a repetição. Refaz apenas as próximas previsões não pagas, mantendo anteriores, histórico e pagamentos. Datas mensais respeitam o fim do mês; vencimentos duplicados ao mover a data são rejeitados.
+- Nova RPC transacional com controle de revisão e chave para tentativas repetidas. As chaves originais de criação das séries continuam imutáveis, mesmo depois de edições e exclusões.
+- Início exibe valor líquido dos imóveis próprios (valor estimado menos dívida), separado do caixa disponível. Alugado e Terceiro ficam fora desse resumo; continuam cadastráveis e editáveis em Imóveis.
+- Despesas de imóveis próprios financiados podem ser identificadas como Parcela do financiamento no cadastro e na edição. A liquidação integral baixa uma parcela; o estorno a devolve enquanto for o mesmo financiamento. Gastos de manutenção e passagem do tempo sem pagamento não baixam parcelas. A dívida em reais é atualizada manualmente conforme saldo do banco, sem estimar amortização ou juros.
+- A contagem atualiza tanto Início quanto a aba Imóveis após um pagamento, sem recarregar. Interface de edição inspecionada em 390px, com seletores e rolagem adequados.
+- Validação: tipos, testes financeiros, banco com migrations 001–014 e instalador passaram. A suíte de 35 testes de navegador passou, seguida de cinco cenários para os ajustes finais, incluindo o novo cenário de atualização das parcelas nas duas telas.
+- Publicação: aplicar somente migrations pendentes, incluindo `014_event_editing_and_property_installments.sql`, e fazer deploy do frontend atualizado. `setup.sql` (001–014) continua exclusivo para instalação nova. Nenhuma migration ou configuração foi aplicada no ambiente remoto; não são necessárias novas chaves.

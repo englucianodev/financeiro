@@ -1,5 +1,6 @@
 import {brl,today} from './money';
-export type ViewEvent={id:string;title:string;amount:number;paid_amount:number;category?:string;due_date:string;account_id:string;owner_id:string;status:string;kind:'income'|'expense';card_id?:string;settled_at?:string;auto_receipt_suppressed?:boolean};
+export type ViewEvent={id:string;title:string;amount:number;paid_amount:number;category?:string;due_date:string;account_id:string;owner_id:string;status:string;kind:'income'|'expense';card_id?:string;settled_at?:string;auto_receipt_suppressed?:boolean;property_id?:string|null;series_id?:string|null;edit_version?:number;is_property_installment?:boolean};
+export function propertyEquity(properties:{estimated_value:number;debt?:number;tenure?:string}[]){return properties.filter(p=>p.tenure==='owned').reduce((sum,p)=>sum+Math.round(Number(p.estimated_value)*100)-Math.round(Number(p.debt??0)*100),0)/100}
 export type ViewAccount={id:string;name:string;owner_id:string;balance:number;is_primary:boolean;color?:string;account_type?:'checking'|'recurring'|'investment'};
 export const alphabetic=(a:string,b:string)=>a.localeCompare(b,'pt-BR',{sensitivity:'base',numeric:true});
 export function shiftDate(date:string,days:number){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)}

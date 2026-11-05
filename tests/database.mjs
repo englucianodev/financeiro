@@ -136,5 +136,67 @@ await assert.rejects(()=>rpc('save_property',[propertyId,h,'Apartamento','Fortal
 await rpc('save_property',[propertyId,h,'Casa alugada','Fortaleza','rented','financed',0,500,null]);assert.equal(await scalar('select pending_installments as value from properties where id=$1',[propertyId]),null);
 const investmentId=randomUUID(),assetBalance=Number(await scalar('select sum(balance) as value from financial_accounts'));const eventCount=await scalar('select count(*)::int as value from financial_events');const investmentArgs=[investmentId,h,uid[0],'Reserva CDB','CDB',1500,'2027-01-01'];await rpc('register_investment',investmentArgs);await rpc('register_investment',investmentArgs);assert.equal(await scalar('select count(*)::int as value from investments where id=$1',[investmentId]),1);assert.equal(Number(await scalar('select sum(balance) as value from financial_accounts')),assetBalance);assert.equal(await scalar('select count(*)::int as value from financial_events'),eventCount);await assert.rejects(()=>rpc('register_investment',[investmentId,h,uid[0],'Reserva CDB','CDB',1600,'2027-01-01']));
 await as(uid[2]);assert.equal(await scalar('select count(*)::int as value from properties where id=$1',[propertyId]),0);await assert.rejects(()=>rpc('save_property',[propertyId,foreign,'Fraude','Fortaleza','owned','paid',0,0,null]));await assert.rejects(()=>rpc('register_investment',investmentArgs));
-console.log('RLS, convites, recorrências, pagamentos parciais, estorno, idempotência, transferências e cartões OK');
+// Account changes, edit/delete scopes and cadence changes never mutate payments or balances.
+await as(uid[0]);
+const alternate=randomUUID();await rpc('create_account',[alternate,h,uid[0],'Alternativa',0]);
+const revisedSeries=randomUUID();const revisedCreation=[revisedSeries,h,uid[0],a,'Série editável',100,'2027-01-31','expense','Outros',false,'months',1,'2027-05-31'];
+await rpc('schedule_events',revisedCreation);
+const seriesRows=async s=>(await db.query('select *,due_date::text as due_date from financial_events where series_id=$1 order by financial_events.due_date,id',[s])).rows;
+let revised=await seriesRows(revisedSeries);assert.equal(revised.length,5);
+const change=async(e,{scope='single',action='edit',account=e.account_id,amount=Number(e.amount),due=e.due_date,property=e.property_id,installment=e.is_property_installment,cadence=false,unit='months',every=1,end=null,key=randomUUID()}={})=>{
+ const args=[key,e.id,scope,action,account,amount,due,property,installment,cadence,unit,every,end,Number(e.edit_version)];await rpc('revise_events',args);return args;
+};
+const fetchEvent=async id=>(await db.query('select *,due_date::text as due_date from financial_events where id=$1',[id])).rows[0];
+const balanceBeforeEditing=Number(await scalar('select sum(balance) as value from financial_accounts'));
+const singleEdit=await change(revised[1],{account:alternate,amount:120,due:'2027-02-27'});await rpc('revise_events',singleEdit);
+revised=await seriesRows(revisedSeries);assert.equal(revised[1].account_id,alternate);assert.equal(Number(revised[1].amount),120);assert.equal(revised[1].due_date,'2027-02-27');assert.equal(revised[2].account_id,a);assert.equal(Number(revised[2].amount),100);
+await assert.rejects(()=>change({...revised[1],edit_version:0},{amount:130}));
+await assert.rejects(()=>change(revised[1],{account:b}));
+await rpc('pay_event',[randomUUID(),revised[3].id,a,100,'2026-01-05',0]);
+await rpc('pay_event',[randomUUID(),revised[4].id,a,10,'2026-01-05',0]);
+await assert.rejects(()=>change(revised[1],{due:'2027-04-30'}),/coincide/);
+await change(revised[1],{scope:'future',account:alternate,amount:140,due:'2027-02-28'});
+revised=await seriesRows(revisedSeries);assert.equal(Number(revised[0].amount),100);assert.equal(Number(revised[2].amount),140);assert.equal(revised[2].due_date,'2027-03-28');assert.equal(revised[3].status,'settled');assert.equal(Number(revised[3].amount),100);assert.equal(Number(revised[4].paid_amount),10);
+const cancelOne=await change(revised[0],{action:'cancel'});await rpc('revise_events',cancelOne);assert.equal((await fetchEvent(revised[0].id)).status,'cancelled');assert.equal((await fetchEvent(revised[1].id)).status,'pending');
+await change(revised[1],{scope:'future',action:'cancel'});revised=await seriesRows(revisedSeries);assert.equal(revised[2].status,'cancelled');assert.equal(revised[3].status,'settled');assert.equal(revised[4].status,'pending');
+assert.equal(Number(await scalar('select sum(balance) as value from financial_accounts')),balanceBeforeEditing-110);
+await rpc('schedule_events',revisedCreation);assert.equal((await seriesRows(revisedSeries)).length,5);assert.equal((await fetchEvent(revised[0].id)).status,'cancelled');
+const cadenceSeries=randomUUID();await rpc('schedule_events',[cadenceSeries,h,uid[0],a,'Nova frequência',20,'2028-01-31','expense','Outros',false,'months',1,'2028-05-31']);
+let cadenceRows=await seriesRows(cadenceSeries);await rpc('pay_event',[randomUUID(),cadenceRows[2].id,a,20,'2026-01-05',0]);
+await assert.rejects(()=>change(cadenceRows[1],{cadence:true,unit:'days',every:14,end:'2028-04-30'}));
+const cadenceArgs=await change(cadenceRows[1],{scope:'future',cadence:true,unit:'days',every:14,end:'2028-04-11'});await rpc('revise_events',cadenceArgs);
+cadenceRows=await seriesRows(cadenceSeries);assert.equal(cadenceRows.find(e=>e.due_date==='2028-01-31').status,'pending');assert.equal(cadenceRows.find(e=>e.due_date==='2028-03-31').status,'settled');
+assert.deepEqual(cadenceRows.filter(e=>e.status==='pending').map(e=>e.due_date),['2028-01-31','2028-02-29','2028-03-14','2028-03-28','2028-04-11']);
+assert.deepEqual(await rpc('get_event_recurrence',[cadenceRows.find(e=>e.due_date==='2028-02-29').id]),{unit:'days',every:14,end_date:'2028-04-11'});
+const stopAnchor=cadenceRows.find(e=>e.due_date==='2028-03-14');await change(stopAnchor,{scope:'future',cadence:true,unit:'once'});
+assert.equal((await seriesRows(cadenceSeries)).filter(e=>e.status==='pending'&&e.due_date>'2028-03-14').length,0);
+const monthSeries=randomUUID();await rpc('schedule_events',[monthSeries,h,uid[0],a,'Fim do mês',10,'2028-01-15','expense','Outros',false,'once',1,null]);let monthAnchor=(await seriesRows(monthSeries))[0];
+await change(monthAnchor,{scope:'future',cadence:true,unit:'months',due:'2028-01-31',end:'2028-03-31'});
+assert.deepEqual((await seriesRows(monthSeries)).map(e=>e.due_date),['2028-01-31','2028-02-29','2028-03-31']);
+await as(uid[2]);await assert.rejects(()=>rpc('revise_events',singleEdit));await assert.rejects(()=>rpc('get_event_recurrence',[monthAnchor.id]));await as(uid[0]);
+assert.equal(await scalar('select count(*)::int as value from event_change_requests'),0); // private idempotency records
+await assert.rejects(()=>rpc('schedule_events_base',revisedCreation));
+
+// Third-party properties are editable; only explicit financing expenses count as installments.
+await rpc('save_property',[propertyId,h,'Casa de terceiro','Fortaleza','third_party','financed',300000,150000,null]);
+assert.equal(await scalar('select tenure as value from properties where id=$1',[propertyId]),'third_party');
+await rpc('save_property',propertyArgs);const installmentSeries=randomUUID();
+const installmentCreation=[installmentSeries,h,uid[0],a,'Financiamento',100,'2025-01-05','expense','Moradia',false,'months',1,'2025-03-05',propertyId,true];
+await rpc('schedule_events',installmentCreation);await rpc('schedule_events',installmentCreation);
+let installments=await seriesRows(installmentSeries);assert.ok(installments.every(e=>e.is_property_installment));
+const remaining=()=>scalar('select pending_installments as value from properties where id=$1',[propertyId]);assert.equal(await remaining(),120); // elapsed months alone never discharge debt
+const firstPay=randomUUID();await rpc('pay_event',[firstPay,installments[0].id,a,40,'2025-01-05',0]);assert.equal(await remaining(),120);
+const finishPay=[randomUUID(),installments[0].id,a,60,'2025-01-06',40];await rpc('pay_event',finishPay);await rpc('pay_event',finishPay);assert.equal(await remaining(),119);
+await rpc('pay_event',[randomUUID(),installments[1].id,a,100,'2025-02-05',0]);assert.equal(await remaining(),118);
+await rpc('reverse_event',[installments[0].id]);assert.equal(await remaining(),119);
+await rpc('pay_event',[randomUUID(),installments[0].id,a,100,'2025-02-06',0]);assert.equal(await remaining(),118);
+const utilitySeries=randomUUID();await rpc('schedule_events',[utilitySeries,h,uid[0],a,'Energia do imóvel',30,'2025-01-05','expense','Outros',false,'once',1,null,propertyId,false]);const utility=(await seriesRows(utilitySeries))[0];await rpc('pay_event',[randomUUID(),utility.id,a,30,'2025-01-05',0]);assert.equal(await remaining(),118);
+await assert.rejects(()=>rpc('schedule_events',[randomUUID(),h,uid[0],a,'Receita não é parcela',30,'2027-01-05','income','Outros',false,'once',1,null,propertyId,true]));
+const excluded=await change(installments[2],{action:'cancel'});await rpc('revise_events',excluded);assert.equal(await remaining(),118);
+await rpc('schedule_events',installmentCreation);assert.equal((await fetchEvent(installments[2].id)).status,'cancelled');assert.equal(await remaining(),118);
+await assert.rejects(()=>rpc('schedule_events',[...installmentCreation.slice(0,-1),false]));
+await rpc('save_property',[propertyId,h,'Casa','Fortaleza','rented','financed',300000,150000,null]);await rpc('save_property',propertyArgs);
+await rpc('reverse_event',[installments[1].id]);assert.equal(await remaining(),120); // old financing reversal cannot change a newly configured financing
+await as(uid[2]);assert.equal(await scalar('select count(*)::int as value from property_installment_payments'),0);await assert.rejects(()=>change(monthAnchor));
+console.log('RLS, recorrências, contas, escopos de edição/exclusão, parcelas, estornos e preservação de pagamentos OK');
 await db.close();

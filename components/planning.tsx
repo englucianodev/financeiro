@@ -9,7 +9,7 @@ import {errorMessage} from '@/lib/errors';
 import {brl,project,today,transferFlows,type ScheduledTransfer} from '@/lib/money';
 type Account={id:string;name:string;owner_id:string;balance:number;account_type?:string;color?:string};
 type Member={user_id:string;display_name:string};
-type Event={id:string;title:string;amount:number;paid_amount:number;due_date:string;account_id:string;owner_id:string;status:string;kind:'income'|'expense';category?:string;property_id?:string;card_id?:string};
+type Event={id:string;title:string;amount:number;paid_amount:number;due_date:string;account_id:string;owner_id:string;status:string;kind:'income'|'expense';category?:string;property_id?:string|null;card_id?:string};
 type Property=PropertyRecord;
 
 type Card={id:string;name:string;owner_id:string;closing_day:number;due_day:number};
@@ -29,7 +29,7 @@ export default function Planning({view,persistenceKey,transfers,db,household,acc
  const [from,setFrom]=useState(today().slice(0,7)+'-01'),[to,setTo]=useState(today().slice(0,4)+'-12-31');
  const [scenarios,setScenarios]=useState<{id:string;title:string;account_id:string;amount:number;due_date:string;status:string}[]>([]);
  async function loadAssets(){const results=await Promise.all([db.from('properties').select('*').eq('household_id',household),db.from('credit_cards').select('*').eq('household_id',household)]);for(const r of results)if(r.error)throw r.error;setProperties(results[0].data??[]);setCards(results[1].data??[]);}
- useEffect(()=>{loadAssets().catch(e=>setError(errorMessage(e)))},[household,db]);
+ useEffect(()=>{loadAssets().catch(e=>setError(errorMessage(e)))},[household,db,events]);
  async function run(fn:()=>Promise<void>){setBusy(true);setError('');try{await fn();await loadAssets();await reload()}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
  async function insert(table:string,data:object){const {error}=await db.from(table).insert({...data,household_id:household});if(error)throw error;}
  const options=accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>);
