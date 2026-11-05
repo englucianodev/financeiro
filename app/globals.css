@@ -1,0 +1,12 @@
+@tailwind base;@tailwind components;@tailwind utilities;
+:root{color-scheme:light;--bg:#f3f6f5;--panel:#fff;--ink:#172c2a;--line:#dbe5e0;--muted:#64746d}
+html.dark{color-scheme:dark;--bg:#101c1a;--panel:#192a27;--ink:#e3eee9;--line:#344b43;--muted:#a0b7ad}
+body{background:var(--bg);color:var(--ink);font-family:Arial,sans-serif}
+input,select{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--panel);color:var(--ink);width:100%;min-height:44px}
+button{border-radius:10px;padding:10px 14px;background:#14634e;color:white;font-weight:600;min-height:44px;cursor:pointer}
+button:hover{background:#104d3d}button:disabled{opacity:.55;cursor:not-allowed}button[aria-pressed=true]{background:#25483b;outline:2px solid #76bba0;outline-offset:2px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 3px 18px #12352a05}
+label{font-size:13px;font-weight:600;display:block;margin-bottom:6px}h2{font-size:18px;font-weight:700}h3{font-weight:600}small{font-size:12px}.border-b{border-color:var(--line)}.text-slate-500{color:var(--muted)}
+.calendar-day{padding:8px 0;background:var(--bg);color:var(--ink);border:1px solid var(--line);min-width:0;font-size:13px}.calendar-day:hover,.calendar-day.selected{background:#d6ebdf;color:#172c2a}
+:focus-visible{outline:3px solid #28a37b;outline-offset:3px}input[type=checkbox]{min-height:0}
+@media(max-width:600px){.card{padding:16px}header{gap:12px;flex-wrap:wrap}.calendar-day small{font-size:10px}}

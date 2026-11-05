@@ -1,0 +1,68 @@
+import {PGlite} from '@electric-sql/pglite';
+import {pgcrypto} from '@electric-sql/pglite/contrib/pgcrypto';
+import {readFile,readdir} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+const db=new PGlite({extensions:{pgcrypto}});
+const scalar=async(sql,args=[])=>(await db.query(sql,args)).rows[0]?.value;
+const rpc=async(name,args)=>scalar(`select public.${name}(${args.map((_,i)=>'$'+(i+1)).join(',')}) as value`,args);
+const uid=[randomUUID(),randomUUID(),randomUUID()];
+await db.exec(`create schema extensions;create extension pgcrypto with schema extensions;create role authenticated;create role anon;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated;grant execute on function auth.uid() to authenticated;`);
+for(const id of uid)await db.query('insert into auth.users values($1)',[id]);
+const legacyUser=randomUUID(),legacyHouse=randomUUID(),legacyAccount=randomUUID(),legacyEvent=randomUUID();
+await db.query('insert into auth.users values($1)',[legacyUser]);
+for(const file of (await readdir('supabase/migrations')).sort()){
+ await db.exec(await readFile('supabase/migrations/'+file,'utf8'));
+ if(file==='001_initial.sql'){
+ await db.query('insert into households(id,name) values($1,$2)',[legacyHouse,'Legado']);
+ await db.query('insert into household_members values($1,$2,$3)',[legacyHouse,legacyUser,'Legado']);
+ await db.query('insert into financial_accounts(id,household_id,owner_id,name,balance) values($1,$2,$3,$4,800)',[legacyAccount,legacyHouse,legacyUser,'Legado']);
+ await db.query("insert into financial_events(id,household_id,created_by,owner_id,account_id,title,amount,due_date,kind,status) values($1,$2,$3,$3,$4,'Legado',200,'2026-01-01','expense','settled')",[legacyEvent,legacyHouse,legacyUser,legacyAccount]);
+ }console.log('Migration',file,'OK');
+}
+assert.equal(Number(await scalar('select balance as value from financial_accounts where id=$1',[legacyAccount])),800);
+assert.equal(Number(await scalar('select sum(amount) as value from account_ledger where account_id=$1',[legacyAccount])),800);
+
+// Match Supabase default table grants; security must rely on RLS, not missing grants.
+await db.exec('grant usage on schema public to authenticated;grant select,insert,update,delete on all tables in schema public to authenticated;grant usage,select on all sequences in schema public to authenticated;');
+const as=async(id)=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role authenticated');};
+await as(legacyUser);await rpc('reverse_event',[legacyEvent]);assert.equal(Number(await scalar('select balance as value from financial_accounts where id=$1',[legacyAccount])),1000);
+await as(uid[0]);const h=await rpc('create_household',['Casa','Ana']);const token=await rpc('create_invite',[h]);assert.equal(token.length,64);
+await assert.rejects(()=>rpc('create_household',['Duplicada','Ana']));
+await as(uid[1]);await assert.rejects(()=>rpc('join_household',[h,'Bruno']));await rpc('join_household',[token,'Bruno']);
+await as(uid[2]);await assert.rejects(()=>rpc('join_household',[token,'Intruso']));const foreign=await rpc('create_household',['Outra casa','Intruso']);
+assert.equal(await scalar('select count(*)::int as value from public.financial_accounts where household_id=$1',[h]),0);
+await as(uid[0]);
+const a=randomUUID(),b=randomUUID();
+await db.query('insert into financial_accounts(id,household_id,owner_id,name,balance) values($1,$2,$3,$4,1000),($5,$2,$6,$7,100)',[a,h,uid[0],'Ana',b,uid[1],'Bruno']);
+assert.equal(Number(await scalar('select balance as value from financial_accounts where id=$1',[a])),1000);
+await rpc('set_primary_account',[a]);await rpc('set_primary_account',[b]);
+const series=randomUUID();await rpc('create_series',[series,h,uid[1],b,'Aluguel',300,'2026-01-31','expense',3,'Moradia',null,false]);
+assert.deepEqual((await db.query("select due_date::text as d from financial_events where series_id=$1 order by due_date",[series])).rows.map(r=>r.d),['2026-01-31','2026-02-28','2026-03-31']);
+const event=await scalar('select id as value from financial_events where series_id=$1 order by due_date limit 1',[series]);
+const pay=randomUUID();await rpc('pay_event',[pay,event,a,100,'2026-01-31',0]);await rpc('pay_event',[pay,event,a,100,'2026-01-31',0]);
+assert.equal(Number(await scalar('select balance as value from financial_accounts where id=$1',[a])),900);
+await assert.rejects(()=>rpc('pay_event',[randomUUID(),event,a,100,'2026-01-31',0]));
+await rpc('pay_event',[randomUUID(),event,b,200,'2026-01-31',100]);
+assert.equal(await scalar('select status as value from financial_events where id=$1',[event]),'settled');
+await rpc('reverse_event',[event]);await rpc('reverse_event',[event]);
+assert.equal(Number(await scalar('select balance as value from financial_accounts where id=$1',[a])),1000);
+assert.equal(Number(await scalar('select balance as value from financial_accounts where id=$1',[b])),100);
+const key=randomUUID();await rpc('transfer_funds',[a,b,50,key]);await rpc('transfer_funds',[a,b,50,key]);
+assert.equal(Number(await scalar('select sum(balance) as value from financial_accounts')),1100);
+await assert.rejects(()=>rpc('transfer_funds',[a,b,51,key]));
+await assert.rejects(()=>db.query("insert into financial_events(household_id,created_by,owner_id,account_id,title,amount,due_date,kind,status) values($1,$2,$2,$3,'Fraude',1,'2026-01-01','income','settled')",[h,uid[0],a]));
+const card=randomUUID();await db.query('insert into credit_cards(id,household_id,owner_id,account_id,name,closing_day,due_day) values($1,$2,$3,$4,$5,20,5)',[card,h,uid[1],b,'Cartão']);
+const purchase=randomUUID();await rpc('create_card_purchase',[purchase,card,'Geladeira',100,'2026-01-20',3]);await rpc('create_card_purchase',[purchase,card,'Geladeira',100,'2026-01-20',3]);
+assert.equal(Number(await scalar('select sum(amount) as value from financial_events where purchase_id=$1',[purchase])),100);
+assert.equal(await scalar('select min(due_date)::text as value from financial_events where purchase_id=$1',[purchase]),'2026-03-05');
+assert.equal(Number(await scalar('select sum(balance) as value from financial_accounts')),1100);
+await as(uid[2]);
+assert.equal(await scalar('select count(*)::int as value from financial_events'),0);
+assert.equal(await scalar('select count(*)::int as value from account_ledger'),0);
+await assert.rejects(()=>rpc('pay_event',[randomUUID(),event,a,1,'2026-01-31',0]));
+await assert.rejects(()=>rpc('create_invite',[h]));
+await assert.rejects(()=>rpc('transfer_funds',[a,b,1,randomUUID()]));
+await assert.rejects(()=>db.query('insert into account_ledger(household_id,account_id,amount,operation_key) values($1,$2,1,$3)',[h,a,'fraud']));
+console.log('RLS, convites, recorrências, pagamentos parciais, estorno, idempotência, transferências e cartões OK');
+await db.close();
