@@ -12,9 +12,11 @@
     "test:e2e": "playwright test",
     "test:credit": "node tests/credit-database.mjs",
     "prebuild": "node scripts/prepare-readers.mjs",
-    "predev": "node scripts/prepare-readers.mjs"
+    "predev": "node scripts/prepare-readers.mjs",
+    "test:password": "tsc app/api/statements/unlock/route.ts lib/pdf-password.ts --outDir .test-build/password --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck --esModuleInterop && node tests/pdf-password.mjs"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.1.0",
     "@radix-ui/react-slot": "^1.5.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.0",

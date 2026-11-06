@@ -1,0 +1,4 @@
+import {createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
+function key(){const k=Buffer.from(process.env.PDF_PASSWORD_ENCRYPTION_KEY??'','base64');if(k.length!==32)throw new Error('PDF password storage unavailable');return k}
+export function sealPassword(password:string,user:string,card:string){const iv=randomBytes(12),c=createCipheriv('aes-256-gcm',key(),iv);c.setAAD(Buffer.from(user+':'+card));const encrypted=Buffer.concat([c.update(password,'utf8'),c.final()]);return [iv,c.getAuthTag(),encrypted].map(b=>b.toString('base64')).join('.')}
+export function openPassword(value:string,user:string,card:string){const [iv,tag,text]=value.split('.').map(s=>Buffer.from(s,'base64')),c=createDecipheriv('aes-256-gcm',key(),iv);c.setAAD(Buffer.from(user+':'+card));c.setAuthTag(tag);return Buffer.concat([c.update(text),c.final()]).toString('utf8')}

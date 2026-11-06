@@ -29,7 +29,7 @@ export function parseStatement(text:string,format:string){const rows:StatementRo
 export function compareRow(row:StatementRow,data:CreditData,card:string):StatementRow{
  const candidates=data.lines.filter(l=>l.card_id===card);const bank=row.bank_id?candidates.find(l=>(l as typeof l&{bank_transaction_id?:string}).bank_transaction_id===row.bank_id):undefined;
  const merchant=(s:string)=>normal(s.replace(/\b\d{1,3}\/\d{1,3}\b/g,''));
- const related=candidates.find(l=>merchant(l.title)===merchant(row.description)&&(!row.count||row.count===1||l.installment===row.installment));const match=bank??related;
+ const related=candidates.find(l=>merchant(l.title)===merchant(row.description)&&(!row.count||row.count===1||l.installment===row.installment));const refund=row.kind==='refund'||row.kind==='credit'?candidates.find(l=>l.line_type==='refund'&&Number(l.amount)===row.amount&&l.charge_date===row.date):undefined;const match=bank??related??refund;
  const invalid=!row.date||!Number.isFinite(row.amount)||row.amount===0||!row.description||row.count<row.installment||row.count>120;
  const comparison=invalid?'Necessita revisão':bank?(Number(bank.amount)===row.amount&&bank.charge_date===row.date?'Já cadastrado':'Divergente'):match?(Number(match.amount)===row.amount?'Possível duplicidade':'Divergente'):'Novo lançamento';
  return {...row,comparison,match_id:match?.id??'',decision:''};
