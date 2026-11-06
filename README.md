@@ -155,3 +155,13 @@ Em Transações → Editar, selecione o Responsável e uma conta dessa pessoa. A
 O painel compacto Contas de investimento aparece depois do gráfico e antes de Saldo aplicado em imóveis. O sistema e o login usam a paleta ameixa, grafite e marfim, com tema escuro equivalente.
 
 Para atualizar um banco existente, aplique as migrations pendentes em ordem, incluindo `018_event_owner.sql`, e publique o frontend. O instalador `setup.sql` inclui 001–018 e deve ser usado somente em banco novo.
+
+## Módulo completo de cartões (migration 019)
+
+Cartões de crédito está em Contas, ao lado de Contas bancárias. Novas compras são cadastradas em Tipo → Despesa no cartão ou no próprio módulo. Inclui titular/conta autorizada, responsável separado, parcelamentos antigos, obrigações manuais, cobranças automáticas, recorrências, faturas consolidadas, limite compartilhado com adicionais, pagamentos/reversões, encargos informados, estornos, antecipações e gráficos por cartão.
+
+Consumo, previsão e débito bancário têm cálculos separados. Nenhum registro anterior é convertido automaticamente; anotações históricas exigem diagnóstico e revisão para evitar duplicar faturas já cadastradas.
+
+Antes de publicar, siga `docs/CARTOES_MIGRACAO.md`. Aplique manualmente somente migrations pendentes, incluindo `supabase/migrations/019_credit_module.sql`. O instalador 001–019 é somente para banco vazio. Diagnóstico e validação somente leitura: `supabase/credit_diagnostic_before.sql` e `supabase/credit_validate_after.sql`. O agendamento opcional fica em `supabase/credit_enable_cron.sql` e depende de pg_cron habilitado manualmente.
+
+Arquitetura: `docs/CARTOES_ARQUITETURA.md`. Evidências/limites: `docs/CARTOES_TESTES.md`. Teste de banco específico: `npm run test:credit`. Nenhuma alteração remota, commit ou push faz parte desta entrega.

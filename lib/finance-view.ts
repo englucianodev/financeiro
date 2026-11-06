@@ -1,15 +1,18 @@
 import {brl,today,project,transferFlows,type ScheduledTransfer} from './money';
-export type ViewEvent={id:string;title:string;amount:number;paid_amount:number;category?:string;due_date:string;account_id:string;owner_id:string;status:string;kind:'income'|'expense';card_id?:string;settled_at?:string;auto_receipt_suppressed?:boolean;property_id?:string|null;series_id?:string|null;edit_version?:number;is_property_installment?:boolean;credit_state?:'none'|'planned'|'paid';payment_card_id?:string|null;credit_paid_date?:string|null};
+export type ViewEvent={source?:'cc_invoice'|'cc_obligation'|'cc_charge'|'cc_closing';source_id?:string;projection_due?:string;card_owner_id?:string;card_mode?:'manual'|'automatic';linked_purchase_id?:string;hidden_transaction?:boolean;generation_error?:string;id:string;title:string;amount:number;paid_amount:number;category?:string;due_date:string;account_id:string;owner_id:string;status:string;kind:'income'|'expense';card_id?:string;settled_at?:string;auto_receipt_suppressed?:boolean;property_id?:string|null;series_id?:string|null;edit_version?:number;is_property_installment?:boolean;credit_state?:'none'|'planned'|'paid';payment_card_id?:string|null;credit_paid_date?:string|null};
 export type CreditCard={id:string;name:string;owner_id:string};
-export const isCashEvent=(event:{credit_state?:string})=>!event.credit_state||event.credit_state==='none';
+export const cashDate=(event:{due_date:string;projection_due?:string})=>event.projection_due??event.due_date;
+export const isCashEvent=(event:{source?:string;status?:string;credit_state?:string})=>event.source==='cc_obligation'?event.status==='pending':event.source==='cc_charge'||event.source==='cc_closing'?false:!event.credit_state||event.credit_state==='none';
+export const isConsumptionEvent=(event:{source?:string;status?:string;credit_state?:string})=>event.source==='cc_charge'||(event.source==='cc_obligation'?event.status==='pending':event.source==='cc_invoice'||event.source==='cc_closing'?false:!event.credit_state||event.credit_state==='none');
 export const eventIsPaid=(event:ViewEvent)=>event.status==='settled'||event.credit_state==='paid';
 export function weekStart(current:string){const date=new Date(current+'T12:00:00Z');return shiftDate(current,-((date.getUTCDay()+6)%7))}
 export function transactionView(events:ViewEvent[],{month,current=today(),search='',kind='',category='',status='all'}:{month:string;current?:string;search?:string;kind?:string;category?:string;status?:string}){
  const filtered=Boolean(search||kind||category||status!=='week');
- const rows=events.filter(e=>e.status!=='cancelled'&&e.due_date.startsWith(month)&&(!search||(e.title+' '+(e.category??'')).toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')))&&(!kind||e.kind===kind)&&(!category||e.category===category))
+ const selected=events.filter(e=>e.source!=='cc_closing'&&e.status!=='cancelled'&&e.due_date.startsWith(month)&&(!search||(e.title+' '+(e.category??'')).toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')))&&(!kind||e.kind===kind)&&(!category||e.category===category))
   .filter(e=>status==='paid'?eventIsPaid(e):status==='late'?!eventIsPaid(e)&&e.due_date<current:status==='upcoming'?!eventIsPaid(e)&&e.due_date>=current:true)
   .filter(e=>filtered||month!==current.slice(0,7)||e.due_date>=weekStart(current)).sort((a,b)=>a.due_date.localeCompare(b.due_date)||alphabetic(a.title,b.title));
- const cents=rows.filter(isCashEvent).reduce((sum,e)=>{sum[e.kind]+=Math.round(Number(e.amount)*100);return sum},{income:0,expense:0});
+ const rows=selected.filter(e=>!e.hidden_transaction);
+ const cents=selected.filter(isConsumptionEvent).reduce((sum,e)=>{sum[e.kind]+=Math.round(Number(e.amount)*100);return sum},{income:0,expense:0});
  return {rows,income:cents.income/100,expense:cents.expense/100,balance:(cents.income-cents.expense)/100};
 }
 export function propertyEquity(properties:{estimated_value:number;debt?:number;tenure?:string}[]){return properties.filter(p=>p.tenure==='owned').reduce((sum,p)=>sum+Math.round(Number(p.estimated_value)*100)-Math.round(Number(p.debt??0)*100),0)/100}
@@ -17,11 +20,11 @@ export type ViewAccount={id:string;name:string;owner_id:string;balance:number;is
 /** Current bank cash plus unpaid commitments through the calendar month end. */
 export function monthlyCashOutlook(accounts:ViewAccount[],events:ViewEvent[],transfers:ScheduledTransfer[]=[],current=today()){
  const through=shiftDate(moveMonth(current.slice(0,7),1)+'-01',-1),cashAccounts=accounts.filter(a=>a.account_type!=='investment'),ids=new Set(cashAccounts.map(a=>a.id));
- const pending=events.filter(e=>isCashEvent(e)&&e.status==='pending'&&e.due_date<=through&&ids.has(e.account_id));
+ const pending=events.filter(e=>isCashEvent(e)&&e.status==='pending'&&cashDate(e)<=through&&ids.has(e.account_id));
  const remaining=(e:ViewEvent)=>Math.round(Number(e.amount)*100)-Math.round(Number(e.paid_amount??0)*100);
  const totals=pending.reduce((sum,e)=>{sum[e.kind]+=remaining(e);return sum},{income:0,expense:0});
  const days=Math.round((Date.parse(through+'T12:00:00Z')-Date.parse(current+'T12:00:00Z'))/86400000);
- const projection=project(cashAccounts,[...pending.map(e=>({...e,amount:(e.kind==='income'?1:-1)*remaining(e)/100})),...transferFlows(transfers)],days,current);
+ const projection=project(cashAccounts,[...pending.map(e=>({...e,due_date:cashDate(e),amount:(e.kind==='income'?1:-1)*remaining(e)/100})),...transferFlows(transfers)],days,current);
  return {through,available:cashAccounts.reduce((sum,a)=>sum+Math.round(Number(a.balance)*100),0)/100,income:totals.income/100,expense:totals.expense/100,projected:projection[projection.length-1]?.total??0};
 }
 export const alphabetic=(a:string,b:string)=>a.localeCompare(b,'pt-BR',{sensitivity:'base',numeric:true});
@@ -33,7 +36,7 @@ export function monthlySummary(events:ViewEvent[],month:string,categories:{name:
  const colors=new Map<string,string>(),used=new Set<string>();
  names.forEach((name,i)=>{const preferred=categories.find(c=>c.kind==='expense'&&c.name===name)?.color.toLowerCase();const color=preferred&&/^#[0-9a-f]{6}$/.test(preferred)&&!used.has(preferred)?preferred:expensePalette.find(c=>!used.has(c))??`hsl(${(i*137.508)%360} 52% 48%)`;colors.set(name,color);used.add(color)});
  let income=0,expense=0;const totals=new Map<string,number>();
- for(const event of events){if(!isCashEvent(event)||event.status==='cancelled'||!event.due_date.startsWith(month))continue;const cents=Math.round(Number(event.amount)*100);if(event.kind==='income')income+=cents;else{expense+=cents;const name=event.category?.trim()||'Outros';totals.set(name,(totals.get(name)??0)+cents)}}
+ for(const event of events){if(!isConsumptionEvent(event)||event.status==='cancelled'||!event.due_date.startsWith(month))continue;const cents=Math.round(Number(event.amount)*100);if(event.kind==='income')income+=cents;else{expense+=cents;const name=event.category?.trim()||'Outros';totals.set(name,(totals.get(name)??0)+cents)}}
  return {income:income/100,expense:expense/100,balance:(income-expense)/100,categories:Array.from(totals,([name,cents])=>({name,value:cents/100,percent:expense?cents/expense*100:0,color:colors.get(name)!})).sort((a,b)=>b.value-a.value||alphabetic(a.name,b.name))};
 }
 export function shiftDate(date:string,days:number){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)}

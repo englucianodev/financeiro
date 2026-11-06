@@ -1,12 +1,13 @@
 "use client";
 import {useState,useRef,useEffect} from 'react';import type {SupabaseClient} from '@supabase/supabase-js';
 import {today,brl} from '@/lib/money';import {errorMessage} from '@/lib/errors';import {Button} from './ui/button';
-import CreditFields,{type CreditState} from './credit-fields';import type {CreditCard} from '@/lib/finance-view';
+import CreditFields,{type CreditState} from './credit-fields';import {CardEntryForm} from './credit-module';import {emptyCredit,type CreditData} from '@/lib/credit';
+import type {CreditCard} from '@/lib/finance-view';
 import type {PropertyRecord} from './properties-panel';
 type Account={id:string;name:string;owner_id:string;is_primary:boolean};
-type EntryType='expense'|'income'|'salary'|'investment';
+type EntryType='expense'|'income'|'salary'|'investment'|'card';
 type Investment={id:string;name:string;kind:string;amount:number;owner_id:string;liquidity_date:string|null};
-export default function EntryForm({db,household,userId,accounts,members,categories,properties,reload,initialType,cards}:{cards:CreditCard[];db:SupabaseClient;household:string;userId:string;accounts:Account[];members:{user_id:string;display_name:string}[];categories:{name:string;kind:string;active:boolean}[];properties:PropertyRecord[];reload:()=>Promise<void>;initialType:'expense'|'income'}){
+export default function EntryForm({db,household,userId,accounts,members,categories,properties,reload,initialType,cards,creditData}:{creditData?:CreditData;cards:CreditCard[];db:SupabaseClient;household:string;userId:string;accounts:Account[];members:{user_id:string;display_name:string}[];categories:{name:string;kind:string;active:boolean}[];properties:PropertyRecord[];reload:()=>Promise<void>;initialType:'expense'|'income'}){
  const [type,setType]=useState<EntryType>(initialType),[owner,setOwner]=useState(userId),[account,setAccount]=useState(''),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[frequency,setFrequency]=useState('once'),[property,setProperty]=useState(''),[investments,setInvestments]=useState<Investment[]>([]);
  const [credit,setCredit]=useState<CreditState>('none'),[paymentCard,setPaymentCard]=useState('');
  const keys=useRef(new Map<string,string>()),lock=useRef(false),kind=type==='expense'?'expense':'income';
@@ -15,6 +16,7 @@ export default function EntryForm({db,household,userId,accounts,members,categori
  useEffect(()=>{let active=true;if(type==='investment')loadInvestments().then(data=>{if(active)setInvestments(data)}).catch(e=>{if(active)setMessage(errorMessage(e))});return()=>{active=false}},[db,household,type]);
  const categoryOptions=Array.from(new Set(categories.filter(c=>c.active&&c.kind===kind).map(c=>c.name))).sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
  const defaultCategory=type==='salary'&&categoryOptions.includes('Salário')?'Salário':categoryOptions.includes('Outros')?'Outros':categoryOptions[0];
+ if(type==='card')return <div id="new-entry" className="card"><label>Tipo<select aria-label="Tipo de lançamento" value={type} onChange={e=>setType(e.target.value as EntryType)}><option value="expense">Despesa</option><option value="income">Receita</option><option value="salary">Salário</option><option value="investment">Investimento</option><option value="card">Despesa no cartão</option></select></label><CardEntryForm db={db} household={household} data={creditData??emptyCredit()} members={members} categories={categories} reload={reload}/></div>;
  return <div id="new-entry" className="card"><h2>Novo lançamento</h2><form className="form-grid" onSubmit={async e=>{
  e.preventDefault();if(lock.current)return;const fd=new FormData(e.currentTarget);lock.current=true;setBusy(true);setMessage('');try{
  let params:Record<string,unknown>,rpc:string;
@@ -26,7 +28,7 @@ export default function EntryForm({db,household,userId,accounts,members,categori
  }
  const signature=JSON.stringify([rpc,params]);let key=keys.current.get(signature);if(!key){key=crypto.randomUUID();keys.current.set(signature,key)}const r=await db.rpc(rpc,{p_id:key,...params});if(r.error)throw r.error;if(type==='investment')setInvestments(await loadInvestments());await reload();keys.current.delete(signature);setMessage(type==='investment'?'Investimento cadastrado.':'Previsões cadastradas com sucesso.');
  }catch(e){setMessage(errorMessage(e))}finally{lock.current=false;setBusy(false)}}}>
- <label>Tipo<select aria-label="Tipo de lançamento" value={type} onChange={e=>{const next=e.target.value as EntryType;if(type==='salary'||next==='salary')setFrequency(next==='salary'?'1':'once');setType(next);setMessage('')}}><option value="expense">Despesa</option><option value="income">Receita</option><option value="salary">Salário</option><option value="investment">Investimento</option></select></label>
+ <label>Tipo<select aria-label="Tipo de lançamento" value={type} onChange={e=>{const next=e.target.value as EntryType;if(type==='salary'||next==='salary')setFrequency(next==='salary'?'1':'once');setType(next);setMessage('')}}><option value="expense">Despesa</option><option value="income">Receita</option><option value="salary">Salário</option><option value="investment">Investimento</option><option value="card">Despesa no cartão</option></select></label>
  <label>Descrição<input name="title" placeholder="Descrição" required maxLength={type==='investment'?120:200}/></label><label>Valor<input name="amount" type="number" min={type==='investment'?'0':'.01'} step=".01" placeholder="Valor" required/></label>
  <label>Responsável<select aria-label="Responsável" value={owner} onChange={e=>{setOwner(e.target.value);setPaymentCard('');setAccount((accounts.find(a=>a.owner_id===e.target.value&&a.is_primary)??accounts.find(a=>a.owner_id===e.target.value))?.id??'')}}>{members.map(m=><option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}</select></label>
  {type==='investment'?<><label>Tipo de investimento<select name="investment_kind"><option>Poupança</option><option>CDB</option><option>Outros</option></select></label><label>Disponível em (opcional)<input name="liquidity" type="date"/></label><p className="muted form-title">Cadastro patrimonial: não altera o saldo bancário. Para aplicar ou resgatar dinheiro, transfira entre contas pela edição da conta de origem.</p></>:<>

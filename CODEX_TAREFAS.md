@@ -108,3 +108,14 @@ Nenhuma configuração Auth ou migration foi aplicada remotamente. Continuam vá
 - Publicação: aplicar somente migrations pendentes, incluindo 018, depois publicar frontend. Nenhuma atualização remota nesta etapa.
 
 - Validação desta etapa: tipos, testes financeiros, banco PGlite com 001–018 e instalador passaram. 50 testes de navegador passaram, incluindo troca de responsável, limpeza de conta/cartão e alinhamento/posição do painel de investimentos. Capturas móveis, desktop, tema escuro e login inspecionadas. Compilação de produção passou.
+
+# Continuidade — módulo completo de cartões (019)
+
+- Análise em docs/CARTOES_ARQUITETURA.md. Implementação aditiva: metadados de cartões, tabelas cc_*, RLS, auditoria e RPC transacional cc_action. Sem conversão de eventos/compras/pagamentos antigos.
+- Contas ganhou Cartões de crédito; formulário unificado tem Despesa no cartão. Titular, responsável e conta de pagamento são distintos. Novas contas de pagamento devem pertencer ao titular do principal.
+- Compras à vista/parceladas, importação em 5/12, principal integral no limite, adicionais compartilhados, faturas consolidadas, parciais/múltiplos pagamentos, reversão, estorno/crédito, antecipação com desconto e encargos informados.
+- Manual não usa limite/fatura antes da confirmação; automática é materializada na data devida. Recorrências com valor variável, pausa/reativação/encerramento e substituição segura de periodicidade. Alertas internos, calendário, projeção e relatórios por cartão sem dupla contagem. Gráficos existentes mantidos; cartões têm gráficos simultâneos.
+- Testes: tipos, npm test, banco 001–019, teste específico de crédito, instalador e build final passaram. Suíte completa: 57 cenários passaram; rodada final específica: oito passaram, incluindo calendário/consumo/caixa. Capturas móveis inspecionadas. Helpers restritos e diagnóstico SQL testados localmente. pg_cron remoto não instalado/testado.
+- Entrega/inventário: docs/CARTOES_ENTREGA.md. Instruções: docs/CARTOES_MIGRACAO.md. Diagnósticos somente leitura e cron opcional em supabase/credit_*.sql.
+- Pendências do usuário: diagnóstico real, aplicar somente migrations pendentes até 019, validação remota, deploy e cron opcional. Anotações antigas credit_state continuam dependendo de revisão/autorização para eventual reconciliação; nenhuma foi convertida.
+- Nenhum commit, push, deploy, migração remota ou leitura de dados reais foi executado.
