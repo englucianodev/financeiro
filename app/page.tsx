@@ -4,7 +4,7 @@ import {useEffect,useMemo,useState,useRef} from "react";
 
 import {Wallet,Plus,Home as HomeIcon,CalendarDays,ListChecks,Settings} from "lucide-react";
 import {firstName,familyTitle} from "@/lib/identity";
-import {Metrics} from "@/components/finance-visuals";
+import {Metrics,InvestmentBalance} from "@/components/finance-visuals";
 import MovementList from "@/components/movement-list";
 import MonthlyOverview from "@/components/monthly-overview";
 import EventEditor from "@/components/event-editor";
@@ -12,7 +12,7 @@ import PaymentDialog,{type PaymentMode} from "@/components/payment-dialog";
 import type {PropertyRecord} from "@/components/properties-panel";
 import LoginPanel from "@/components/login-panel";
 import AccountsPanel from "@/components/accounts-panel";
-import {propertyEquity,isCashEvent,type CreditCard,type ViewAccount,type ViewEvent} from "@/lib/finance-view";
+import {propertyEquity,monthlyCashOutlook,type CreditCard,type ViewAccount,type ViewEvent} from "@/lib/finance-view";
 import EntryForm from "@/components/entry-form";
 import Preferences,{type Category} from "@/components/preferences";
 import Planning from "@/components/planning";
@@ -23,7 +23,7 @@ import {useViewState,usePagePosition} from "@/lib/use-view-state";
 
 import {supabase} from "@/lib/supabase";
 
-import {brl,project,today,transferFlows,type ScheduledTransfer} from "@/lib/money";
+import {brl,today,type ScheduledTransfer} from "@/lib/money";
 
 import type {User} from "@supabase/supabase-js";
 
@@ -41,7 +41,7 @@ function FinanceApp(){
  const [cards,setCards]=useState<CreditCard[]>([]);
  const [scheduled,setScheduled]=useState<ScheduledTransfer[]>([]);
  const [categories,setCategories]=useState<Category[]>([]),[entryMode,setEntryMode]=useState<'expense'|'income'>('expense'),[quick,setQuick]=useState(false),[displayName,setDisplayName]=useState('');
- const [investmentsTotal,setInvestmentsTotal]=useState(0),[paymentDates,setPaymentDates]=useState<Record<string,string>>({}),[paymentAccounts,setPaymentAccounts]=useState<Record<string,string[]>>({}),[correction,setCorrection]=useState<Event|null>(null);
+ const [paymentDates,setPaymentDates]=useState<Record<string,string>>({}),[paymentAccounts,setPaymentAccounts]=useState<Record<string,string[]>>({}),[correction,setCorrection]=useState<Event|null>(null);
  const quickMenu=useRef<HTMLDivElement>(null),quickButton=useRef<HTMLButtonElement>(null);
  const [entryVersion,setEntryVersion]=useState(0),[transferRequest,setTransferRequest]=useState(0);
  const acting=useRef(false);
@@ -112,7 +112,6 @@ function FinanceApp(){
   const cardResult=await db.from("credit_cards").select("id,name,owner_id").eq("household_id",h);if(version!==loadVersion.current||activeUser.current!==u.id)return;if(cardResult.error)throw cardResult.error;setCards(cardResult.data??[]);
   const transfersResult=await db.from('scheduled_transfers').select('*').eq('household_id',h);if(version!==loadVersion.current||activeUser.current!==u.id)return;if(transfersResult.error)setError(errorMessage(transfersResult.error));else setScheduled(transfersResult.data??[]);
   const receiptRows=await db.from('event_payments').select('event_id,paid_date,account_id').eq('household_id',h).is('reversed_at',null).order('paid_date');if(version!==loadVersion.current||activeUser.current!==u.id)return;setPaymentDates(Object.fromEntries((receiptRows.data??[]).map(r=>[r.event_id,r.paid_date])));setPaymentAccounts((receiptRows.data??[]).reduce<Record<string,string[]>>((out,r)=>{if(!out[r.event_id])out[r.event_id]=[];if(!out[r.event_id].includes(r.account_id))out[r.event_id].push(r.account_id);return out},{}));
-  const investmentRows=await db.from('investments').select('amount').eq('household_id',h);if(version!==loadVersion.current||activeUser.current!==u.id)return;setInvestmentsTotal((investmentRows.data??[]).reduce((n,r)=>n+Number(r.amount),0));
   const cats=await db.from('categories').select('*').eq('household_id',h).is('deleted_at',null);
   if(version!==loadVersion.current||activeUser.current!==u.id)return;
   if(cats.error)setError(errorMessage(cats.error));else setCategories((cats.data??[]).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR',{sensitivity:'base'})));
@@ -129,7 +128,7 @@ function FinanceApp(){
   function restore(next:User|null){
    if(!mounted||callbackPending||recovering)return;
    if(activeUser.current!==next?.id){
-    activeUser.current=next?.id??null;loadVersion.current++;setHousehold(null);setMembershipStatus("loading");setError("");setPaymentDates({});setPaymentAccounts({});setInvestmentsTotal(0);setCorrection(null);setScheduled([]);setCategories([]);setProperties([]);setCards([]);setAccounts([]);setEvents([]);setMembers([]);setInvite("");setPayment(null);setEditing(null);retryKeys.current.clear();
+    activeUser.current=next?.id??null;loadVersion.current++;setHousehold(null);setMembershipStatus("loading");setError("");setPaymentDates({});setPaymentAccounts({});setCorrection(null);setScheduled([]);setCategories([]);setProperties([]);setCards([]);setAccounts([]);setEvents([]);setMembers([]);setInvite("");setPayment(null);setEditing(null);retryKeys.current.clear();
     if(next)setTimeout(()=>{if(mounted)void load(next)},0);
    }
    setUser(next);setAuthReady(true);setAuthError('');
@@ -158,11 +157,8 @@ function FinanceApp(){
  useEffect(()=>{document.title=members.length?familyTitle(members):"Finanças Compartilhadas"},[members]);
  useEffect(()=>{if(!correction)return;const previous=document.activeElement as HTMLElement|null;const modal=document.querySelector<HTMLElement>('[role="dialog"]');const focusable=()=>Array.from(modal?.querySelectorAll<HTMLElement>('button:not(:disabled),input,select')??[]);focusable()[0]?.focus();const handle=(e:KeyboardEvent)=>{if(e.key==='Escape'){setCorrection(null)}if(e.key==='Tab'){const items=focusable(),first=items[0],last=items.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus()}}};document.addEventListener('keydown',handle);return()=>{document.removeEventListener('keydown',handle);previous?.focus()}},[correction]);
  usePagePosition(user&&household&&members.length?`financas:view:${user.id}:${household}:${mainTab}:scroll`:null);
- const cashAccounts=accounts.filter(a=>a.account_type!=='investment');
- const pending=events.filter(e=>isCashEvent(e)&&e.status==="pending"),total=cashAccounts.reduce((s,a)=>s+a.balance,0);
- const flows=[...transferFlows(scheduled),...pending.map(e=>({...e,amount:(e.kind==='income'?1:-1)*(Number(e.amount)-Number(e.paid_amount??0))}))];
+ const outlook=monthlyCashOutlook(accounts,events,scheduled);
 
- const projection=project(cashAccounts,flows,30);
  async function act(fn:()=>Promise<void>){if(acting.current)return;acting.current=true;setBusy(true);setError("");try{await fn()}catch(e){setError(errorMessage(e))}finally{acting.current=false;setBusy(false)}}
 
  function navigate(tab:string){setMainTab(tab);window.scrollTo({top:0,behavior:'instant'})}
@@ -188,8 +184,8 @@ function FinanceApp(){
  <header id="home" className="app-header"><div><span className="eyebrow"><Wallet size={16}/> FINANÇAS COMPARTILHADAS</span><h1>{familyTitle(members)}</h1><p className="hero-copy">Mais clareza para o presente. Mais espaço para os nossos planos.</p></div><div className="header-actions"><button aria-label="Alternar tema" onClick={()=>{const value=!dark;setDark(value);localStorage.setItem("financas-theme",value?"dark":"light");document.documentElement.classList.toggle("dark",value)}}>{dark?"Modo claro":"Modo escuro"}</button><button onClick={()=>db.auth.signOut()}>Sair</button></div></header>
  {error&&<div role="alert" className="card text-red-700">{error}</div>}
  <div role="tabpanel" id="screen-home" aria-labelledby="tab-home" hidden={mainTab!=='home'} className="tab-content space-y-5">
- <Metrics total={total} income={pending.filter(e=>e.kind==='income'&&e.due_date<=projection[29].date&&cashAccounts.some(a=>a.id===e.account_id)).reduce((n,e)=>n+Number(e.amount)-Number(e.paid_amount??0),0)} expense={pending.filter(e=>e.kind==='expense'&&e.due_date<=projection[29].date&&cashAccounts.some(a=>a.id===e.account_id)).reduce((n,e)=>n+Number(e.amount)-Number(e.paid_amount??0),0)} final={projection[29].total}/>
- <div className="balance-breakdown"><span>Uso diário <b>{brl(accounts.filter(a=>!a.account_type||a.account_type==='checking').reduce((n,a)=>n+a.balance,0))}</b></span><span>Contas de despesas recorrentes <b>{brl(accounts.filter(a=>a.account_type==='recurring').reduce((n,a)=>n+a.balance,0))}</b></span><small>Contas de investimento: {brl(accounts.filter(a=>a.account_type==='investment').reduce((n,a)=>n+a.balance,0))} · Investimentos cadastrados (informativo): {brl(investmentsTotal)}</small></div>
+ <Metrics total={outlook.available} income={outlook.income} expense={outlook.expense} final={outlook.projected} until={outlook.through}/>
+ <InvestmentBalance accounts={accounts.filter(a=>a.account_type==='investment')} members={members}/>
 
  <MovementList mode="urgent" events={events} accounts={accounts} members={members} paymentDates={paymentDates} onPay={openPay} onEdit={openEdit} onCorrect={openCorrection} onExpenseCorrection={openExpenseCorrection} onUndo={openUndo}/>
  <MovementList mode="history" events={events} accounts={accounts} members={members} paymentDates={paymentDates} onPay={openPay} onEdit={openEdit} onCorrect={openCorrection} onExpenseCorrection={openExpenseCorrection} onUndo={openUndo}/>

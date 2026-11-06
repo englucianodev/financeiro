@@ -1,4 +1,4 @@
-import {brl,today} from './money';
+import {brl,today,project,transferFlows,type ScheduledTransfer} from './money';
 export type ViewEvent={id:string;title:string;amount:number;paid_amount:number;category?:string;due_date:string;account_id:string;owner_id:string;status:string;kind:'income'|'expense';card_id?:string;settled_at?:string;auto_receipt_suppressed?:boolean;property_id?:string|null;series_id?:string|null;edit_version?:number;is_property_installment?:boolean;credit_state?:'none'|'planned'|'paid';payment_card_id?:string|null;credit_paid_date?:string|null};
 export type CreditCard={id:string;name:string;owner_id:string};
 export const isCashEvent=(event:{credit_state?:string})=>!event.credit_state||event.credit_state==='none';
@@ -14,6 +14,16 @@ export function transactionView(events:ViewEvent[],{month,current=today(),search
 }
 export function propertyEquity(properties:{estimated_value:number;debt?:number;tenure?:string}[]){return properties.filter(p=>p.tenure==='owned').reduce((sum,p)=>sum+Math.round(Number(p.estimated_value)*100)-Math.round(Number(p.debt??0)*100),0)/100}
 export type ViewAccount={id:string;name:string;owner_id:string;balance:number;is_primary:boolean;color?:string;account_type?:'checking'|'recurring'|'investment'};
+/** Current bank cash plus unpaid commitments through the calendar month end. */
+export function monthlyCashOutlook(accounts:ViewAccount[],events:ViewEvent[],transfers:ScheduledTransfer[]=[],current=today()){
+ const through=shiftDate(moveMonth(current.slice(0,7),1)+'-01',-1),cashAccounts=accounts.filter(a=>a.account_type!=='investment'),ids=new Set(cashAccounts.map(a=>a.id));
+ const pending=events.filter(e=>isCashEvent(e)&&e.status==='pending'&&e.due_date<=through&&ids.has(e.account_id));
+ const remaining=(e:ViewEvent)=>Math.round(Number(e.amount)*100)-Math.round(Number(e.paid_amount??0)*100);
+ const totals=pending.reduce((sum,e)=>{sum[e.kind]+=remaining(e);return sum},{income:0,expense:0});
+ const days=Math.round((Date.parse(through+'T12:00:00Z')-Date.parse(current+'T12:00:00Z'))/86400000);
+ const projection=project(cashAccounts,[...pending.map(e=>({...e,amount:(e.kind==='income'?1:-1)*remaining(e)/100})),...transferFlows(transfers)],days,current);
+ return {through,available:cashAccounts.reduce((sum,a)=>sum+Math.round(Number(a.balance)*100),0)/100,income:totals.income/100,expense:totals.expense/100,projected:projection[projection.length-1]?.total??0};
+}
 export const alphabetic=(a:string,b:string)=>a.localeCompare(b,'pt-BR',{sensitivity:'base',numeric:true});
 export function moveMonth(month:string,delta:number){const date=new Date(month+'-01T12:00:00Z');date.setUTCMonth(date.getUTCMonth()+delta);return date.toISOString().slice(0,7)}
 export const monthLabel=(month:string)=>new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(month+'-01T12:00:00Z'));

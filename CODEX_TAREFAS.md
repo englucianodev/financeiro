@@ -78,3 +78,12 @@ Nenhuma configuração Auth ou migration foi aplicada remotamente. Continuam vá
 - Publicação pendente: aplicar migrations em ordem até 016 e fazer deploy do frontend. Nenhuma alteração remota foi executada.
 
 - Validação de navegador: 45 cenários passaram, incluindo quitação 370→369,12, fechamento sem débito do resíduo, corrigir/desfazer nas listas, erros visíveis e pagamento parcial explícito; três cenários adicionais passaram após destacar a quitação do resíduo. Compilação de produção passou. Correções de parcelas já quitadas preservam o vínculo com o financiamento original, inclusive após reconfiguração do imóvel; despesas variáveis mantêm atualização de previsões futuras.
+
+## Clareza dos saldos e remoção de Total Parcial
+
+- Identificada a diferença: Início usava caixa atual + pendências dos próximos 30 dias (apesar do título do mês); Transações usa entradas menos saídas dos registros exibidos, sem caixa inicial e com recorte de semana/filtros.
+- Nova função pura monthlyCashOutlook utiliza o motor de projeção existente com prazo até o último dia do mês calendário. Calcula valores em centavos, desconta apenas o restante de pagamentos parciais, preserva compromissos vencidos, trata transferências agendadas e exclui investimentos/anotações de cartão do caixa.
+- Cartão do Início renomeado para Saldo previsto em DD/MM, com data e base do cálculo claras. Receitas e despesas previstas usam o mesmo prazo. Transações identifica Saldo das transações e sua fórmula; Total Parcial removido, mantendo apenas três cartões de totais alinhados.
+- Testes financeiros/tipos passaram, incluindo fim de mês, fevereiro bissexto, dezembro, registros pagos, parciais de 0,88, investimentos e transferências. Nenhum banco remoto alterado; não há nova migration nesta atualização.
+
+- Validação final desta alteração: seis testes de navegador passaram (previsão mensal, filtros/totais, crédito e visualização em celular), além dos testes financeiros, tipos e compilação de produção. Interface sem Total Parcial inspecionada em 390px.
