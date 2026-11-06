@@ -165,3 +165,7 @@ Consumo, previsão e débito bancário têm cálculos separados. Nenhum registro
 Antes de publicar, siga `docs/CARTOES_MIGRACAO.md`. Aplique manualmente somente migrations pendentes, incluindo `supabase/migrations/019_credit_module.sql`. O instalador 001–019 é somente para banco vazio. Diagnóstico e validação somente leitura: `supabase/credit_diagnostic_before.sql` e `supabase/credit_validate_after.sql`. O agendamento opcional fica em `supabase/credit_enable_cron.sql` e depende de pg_cron habilitado manualmente.
 
 Arquitetura: `docs/CARTOES_ARQUITETURA.md`. Evidências/limites: `docs/CARTOES_TESTES.md`. Teste de banco específico: `npm run test:credit`. Nenhuma alteração remota, commit ou push faz parte desta entrega.
+
+## Importação de faturas, ajustes e e-mails (020–021)
+
+Instruções, configuração manual do Resend/agendador, arquivos e limitações: `docs/IMPORTACOES_NOTIFICACOES.md`. PDF textual, OCR local em português, CSV e OFX têm conferência obrigatória antes da gravação. Ajustes são compensatórios e auditáveis. Lançamentos efetivados no cartão aparecem em Transações por vencimento da fatura, substituindo a obrigação manual anterior na lista. E-mails permanecem desabilitados até a configuração e ativação explícitas.

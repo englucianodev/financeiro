@@ -4,7 +4,7 @@ export type Card={id:string;name:string;owner_id:string;account_id:string;closin
 export type Invoice={id:string;card_id:string;cycle:string;closing_date:string;due_date:string;revision:number};
 export type Obligation={id:string;card_id:string;responsible_id:string;title:string;category:string;amount:number;due_date:string;mode:'automatic'|'manual';state:'pending'|'posted'|'cancelled';recurrence_id:string|null;revision:number;generation_error?:string};
 export type Purchase={id:string;card_id:string;responsible_id:string;title:string;category:string;amount:number;charge_date:string;installments:number;next_installment:number;obligation_id:string|null};
-export type Line={id:string;invoice_id:string;card_id:string;purchase_id:string|null;responsible_id:string;title:string;category:string;amount:number;paid:number;line_type:'principal'|'fee'|'refund'|'discount'|'credit';installment:number|null;charge_date:string};
+export type Line={id:string;invoice_id:string;card_id:string;purchase_id:string|null;responsible_id:string;title:string;category:string;amount:number;paid:number;line_type:'principal'|'fee'|'refund'|'discount'|'credit'|'adjustment';installment:number|null;charge_date:string};
 export type CardPayment={id:string;invoice_id:string;account_id:string;amount:number;paid_date:string;reversed_at:string|null};
 export type Recurrence={id:string;card_id:string;responsible_id:string;title:string;category:string;amount:number;mode:'automatic'|'manual';variable:boolean;unit:'days'|'months';every:number;start_date:string;end_date:string|null;state:'active'|'paused'|'ended';revision:number};
 export type CreditData={cards:Card[];invoices:Invoice[];obligations:Obligation[];purchases:Purchase[];lines:Line[];payments:CardPayment[];recurrences:Recurrence[]};
@@ -41,13 +41,14 @@ export function creditEvents(data:CreditData,current=today()):ViewEvent[]{
   const rule=data.recurrences.find(r=>r.id===ob.recurrence_id);
   // Pausing suppresses future forecasts; already overdue obligations still require a decision.
   if(rule&&rule.state!=='active'&&ob.due_date>=current&&ob.state==='pending')continue;
-  rows.push({id:'cc-obligation:'+ob.id,source:'cc_obligation',source_id:ob.id,title:ob.title,category:ob.category,kind:'expense',amount:Number(ob.amount),paid_amount:0,due_date:ob.due_date,projection_due:estimatedDue(ob.due_date,root),account_id:root.account_id,owner_id:ob.responsible_id,card_owner_id:card.owner_id,card_id:card.id,card_mode:ob.mode,status:ob.state==='cancelled'?'cancelled':ob.state==='posted'?'settled':'pending',edit_version:ob.revision,linked_purchase_id:purchase?.id,generation_error:ob.generation_error});
+  if(ob.state==='posted')continue;
+  rows.push({id:'cc-obligation:'+ob.id,source:'cc_obligation',source_id:ob.id,title:ob.title,category:ob.category,kind:'expense',amount:Number(ob.amount),paid_amount:0,due_date:ob.due_date,projection_due:estimatedDue(ob.due_date,root),account_id:root.account_id,owner_id:ob.responsible_id,card_owner_id:card.owner_id,card_id:card.id,card_mode:ob.mode,status:ob.state==='cancelled'?'cancelled':'pending',edit_version:ob.revision,linked_purchase_id:purchase?.id,generation_error:ob.generation_error});
  }
  for(const line of data.lines){
   if(line.line_type==='credit')continue;const invoice=data.invoices.find(i=>i.id===line.invoice_id),card=data.cards.find(c=>c.id===line.card_id);if(!invoice||!card)continue;
   const purchase=data.purchases.find(p=>p.id===line.purchase_id);
-  // A manual obligation remains its single visible identity; its charge is reported via this row.
-  rows.push({id:'cc-line:'+line.id,source:'cc_charge',source_id:line.id,title:line.title+(line.installment&&purchase?' ('+line.installment+'/'+purchase.installments+')':''),category:line.category,kind:'expense',amount:Number(line.amount),paid_amount:Number(line.paid),due_date:invoice.due_date,account_id:rootCard(data.cards,card).account_id,owner_id:line.responsible_id,card_owner_id:card.owner_id,card_id:card.id,status:'settled',linked_purchase_id:line.purchase_id??undefined,hidden_transaction:Boolean(purchase?.obligation_id),card_mode:data.obligations.find(o=>o.id===purchase?.obligation_id)?.mode});
+  // Posted charges replace the pending obligation in the general list; history stays linked.
+  rows.push({id:'cc-line:'+line.id,source:'cc_charge',source_id:line.id,title:line.title+(line.installment&&purchase?' ('+line.installment+'/'+purchase.installments+')':''),category:line.category,kind:'expense',amount:Number(line.amount),paid_amount:Number(line.paid),due_date:invoice.due_date,account_id:rootCard(data.cards,card).account_id,owner_id:line.responsible_id,card_owner_id:card.owner_id,card_id:card.id,status:'settled',linked_purchase_id:line.purchase_id??undefined,hidden_transaction:false,card_mode:data.obligations.find(o=>o.id===purchase?.obligation_id)?.mode});
  }
  return rows;
 }

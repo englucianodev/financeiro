@@ -119,3 +119,14 @@ Nenhuma configuração Auth ou migration foi aplicada remotamente. Continuam vá
 - Entrega/inventário: docs/CARTOES_ENTREGA.md. Instruções: docs/CARTOES_MIGRACAO.md. Diagnósticos somente leitura e cron opcional em supabase/credit_*.sql.
 - Pendências do usuário: diagnóstico real, aplicar somente migrations pendentes até 019, validação remota, deploy e cron opcional. Anotações antigas credit_state continuam dependendo de revisão/autorização para eventual reconciliação; nenhuma foi convertida.
 - Nenhum commit, push, deploy, migração remota ou leitura de dados reais foi executado.
+
+# Continuidade — importações, ajustes, e-mails e lançamentos no cartão
+
+- Migrations incrementais 020 (importações/ajustes) e 021 (notificações), sem execução remota. Instalador para banco novo atualizado. Instruções e inventário em docs/IMPORTACOES_NOTIFICACOES.md.
+- Leitores locais PDF.js, OCR Tesseract 6/português, CSV e OFX. Workers/WASM/idioma são preparados por scripts/prepare-readers.mjs, sem upload do PDF nem serviço pago de extração. O teste real detectou incompatibilidade no carregamento gzip do OCR; idioma descompactado e motor estável resolveram. Nenhuma importação ocorre antes da confirmação.
+- Conferência por linha/lote, parcela atual/total original confirmado, duplicidade por identificador e comparação, arquivo SHA-256 único por cartão, referências auditáveis e rollback de lote. 3/10 importa só oito parcelas restantes; tarifas e estornos preservam seus sinais. Pagamentos anteriores não viram compras.
+- Ajustes Complemento/Redução de Fatura, incrementais, com prévia/confirmação e reversão compensatória. Conciliação após importação é explícita. Pagamentos e saldos preservados.
+- Lançamentos efetivados no cartão aparecem em Transações por vencimento da fatura. Obrigações manuais postadas ficam no histórico e são substituídas pela cobrança na lista, sem duplicar o consumo.
+- Preferências de e-mail: 08h/20h, dias úteis, Fortaleza, feriados bloqueados, destinatários atuais selecionados. Inicialmente desabilitadas. Endpoint autenticado, histórico/lease/chave Resend, consulta nova à noite. Nenhum e-mail real enviado; remetente/segredos/cron continuam pendentes de configuração manual.
+- Testes locais: npm test, banco 001–021, crédito/importação/ajustes, instalador e build passaram. Rodada completa de navegador: 60 passaram e OCR falhou antes do recurso descompactado ficar pronto. OCR passou no reteste oficial --last-failed, além dos testes isolados de PDF textual/digitalizado em 390px. Três cenários adicionais de confirmação CSV, ajuste e padrões de notificações passaram. Captura móvel inspecionada.
+- Não houve commit, push, deploy, migração remota ou correção de dados reais. Documentação explica Resend/pg_cron, cotas gratuitas, limites de extração e homologação pendente.

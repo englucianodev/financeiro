@@ -5,10 +5,10 @@ const card={id:'card',owner_id:'ana',account_id:'bank',name:'Nubank',closing_day
 const data={...emptyCredit(),cards:[card],invoices:[{id:'invoice',card_id:'card',cycle:'2026-11-01',closing_date:'2026-11-05',due_date:'2026-11-15',revision:1}],purchases:[{id:'purchase',card_id:'card',responsible_id:'bruno',title:'Energia',category:'Casa',amount:100,charge_date:'2026-11-01',installments:1,next_installment:1,obligation_id:'manual'}],lines:[{id:'line',invoice_id:'invoice',card_id:'card',purchase_id:'purchase',responsible_id:'bruno',title:'Energia',category:'Casa',amount:100,paid:0,line_type:'principal',installment:1,charge_date:'2026-11-01'}],obligations:[{id:'manual',card_id:'card',responsible_id:'bruno',title:'Energia',category:'Casa',amount:100,due_date:'2026-11-01',mode:'manual',state:'posted',revision:1}]};
 const bank=[{id:'bank',name:'Banco',owner_id:'ana',balance:1000,is_primary:true}];
 let events=creditEvents(data,'2026-11-06');
-assert.equal(events.filter(e=>e.source==='cc_invoice').length,1);assert.equal(events.filter(e=>e.source==='cc_obligation').length,1);
+assert.equal(events.filter(e=>e.source==='cc_invoice').length,1);assert.equal(events.filter(e=>e.source==='cc_obligation').length,0);
 assert.equal(monthlyCashOutlook(bank,events,[],'2026-11-06').projected,900);
 assert.equal(monthlySummary(events,'2026-11').expense,100);assert.equal(transactionView(events,{month:'2026-11',current:'2026-11-06'}).expense,100);
-assert.equal(transactionView(events,{month:'2026-11',current:'2026-11-06'}).rows.filter(e=>e.title==='Energia').length,1);
+assert.equal(transactionView(events,{month:'2026-11',current:'2026-11-06'}).rows.filter(e=>e.title.startsWith('Energia')).length,1);
 assert.equal(cardLimit(data,card).used,100);
 data.lines[0].paid=40;events=creditEvents(data,'2026-11-06');assert.equal(invoiceTotals(data.invoices[0],data.lines,'2026-11-06').status,'Parcialmente paga');assert.equal(monthlyCashOutlook([{...bank[0],balance:960}],events,[],'2026-11-06').projected,900);assert.equal(cardLimit(data,card).used,60);assert.equal(monthlySummary(events,'2026-11').expense,100);
 data.lines[0].paid=100;events=creditEvents(data,'2026-11-06');assert.equal(cardLimit(data,card).used,0);assert.equal(monthlySummary(events,'2026-11').expense,100);assert.equal(invoiceTotals(data.invoices[0],data.lines,'2026-11-06').status,'Paga');

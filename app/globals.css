@@ -109,3 +109,7 @@ html.dark button{color:#fff}html.dark .bottom-nav button,html.dark .more-menu bu
 @media(max-width:760px){.credit-card-summary{padding:16px}.credit-card-grid{grid-template-columns:1fr}.credit-metrics strong{font-size:16px}.credit-invoice .button-row button{flex:1;min-width:120px}#credit-module>.section-heading{flex-wrap:wrap;gap:12px}#credit-module .more-menu{grid-template-columns:1fr}.credit-ring{width:170px}}
 
 #credit-module .more-menu button[aria-pressed=true]{background:var(--accent);color:var(--panel)}.card-entry{padding:20px;background:var(--panel);border:1px solid var(--line);border-radius:18px}html.dark #credit-module .more-menu button[aria-pressed=true]{color:var(--bg)}
+
+.statement-dialog{max-width:1000px;width:calc(100% - 24px)}.statement-dialog section{margin:20px 0;padding-top:15px;border-top:1px solid var(--line)}.statement-dialog input,.statement-dialog select{margin-bottom:10px}.email-settings textarea{width:100%;min-height:100px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px}
+
+.statement-dialog{overflow-wrap:anywhere}.statement-dialog fieldset{min-width:0}
