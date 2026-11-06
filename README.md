@@ -147,3 +147,11 @@ Transações inicia com entradas e saídas, todas as categorias e todos os statu
 Aplique as migrations pendentes em ordem, incluindo `016_effective_payments_and_undo.sql` e `017_event_categories.sql`, antes de publicar o frontend. `setup.sql` inclui 001–017 e é somente para instalações novas.
 
 O Início usa um painel destacado para contas de investimento e mantém somente Marcar pago em Vencimentos e Atrasos; ações de edição e recebimento estão em Transações. Tema claro e escuro com movimentos sutis, desativados quando o sistema solicita movimento reduzido.
+
+## Alterar responsável e organização do Início
+
+Em Transações → Editar, selecione o Responsável e uma conta dessa pessoa. A troca limpa o cartão anterior; você pode escolher um cartão da nova pessoa quando aplicável. O alcance Só este lançamento ou Este e os próximos inclui o responsável. Previsões com pagamento bancário registrado continuam protegidas. A edição não movimenta o saldo.
+
+O painel compacto Contas de investimento aparece depois do gráfico e antes de Saldo aplicado em imóveis. O sistema e o login usam a paleta ameixa, grafite e marfim, com tema escuro equivalente.
+
+Para atualizar um banco existente, aplique as migrations pendentes em ordem, incluindo `018_event_owner.sql`, e publique o frontend. O instalador `setup.sql` inclui 001–018 e deve ser usado somente em banco novo.

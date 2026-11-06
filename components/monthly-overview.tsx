@@ -11,7 +11,7 @@ export default function MonthlyOverview({events,categories,persistenceKey}:{even
  const [mode,setMode]=useViewState<'categories'|'balance'>(persistenceKey+':chart-mode','categories',(v):v is 'categories'|'balance'=>v==='categories'||v==='balance');
  const summary=useMemo(()=>monthlySummary(events,month,categories),[events,month,categories]);
  const balanceTotal=summary.income+summary.expense;
- const slices:Slice[]=mode==='categories'?summary.categories:[{name:'Entradas',value:summary.income,color:'#167d8d',percent:balanceTotal?summary.income/balanceTotal*100:0},{name:'Saídas',value:summary.expense,color:'#e67a59',percent:balanceTotal?summary.expense/balanceTotal*100:0}].filter(s=>s.value>0);
+ const slices:Slice[]=mode==='categories'?summary.categories:[{name:'Entradas',value:summary.income,color:'#94719f',percent:balanceTotal?summary.income/balanceTotal*100:0},{name:'Saídas',value:summary.expense,color:'#e67a59',percent:balanceTotal?summary.expense/balanceTotal*100:0}].filter(s=>s.value>0);
  const total=slices.reduce((sum,s)=>sum+Math.round(s.value*100),0)/100,circumference=2*Math.PI*88;let offset=0;
  return <section id="monthly-overview" className="card monthly-overview" aria-label="Análise mensal">
   <div className="section-heading"><div><span className="eyebrow"><ChartPie size={15}/> CADA ESCOLHA CONTA</span><h2>Seu mês em números</h2></div><span className="overview-badge">Visão completa</span></div>

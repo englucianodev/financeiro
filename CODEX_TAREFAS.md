@@ -98,3 +98,13 @@ Nenhuma configuração Auth ou migration foi aplicada remotamente. Continuam vá
 - Publicação: aplicar migrations pendentes em ordem, incluindo 016 e 017, e publicar frontend. Nenhuma alteração remota nesta etapa.
 
 - Validação desta etapa: tipos, testes financeiros, PGlite 001–017 e instalador passaram. 46 cenários existentes de navegador passaram; o novo cenário de categoria/filtros passou após ajuste do rótulo acessível e navegação por teclado para evitar o indicador do servidor de desenvolvimento. Compilação final passou. Capturas móveis de Transações e Início inspecionadas.
+
+# Continuidade — responsável, investimentos compactos e paleta ameixa
+
+- Editar lançamento permite escolher Responsável entre os membros do grupo. Trocar pessoa limpa conta e cartão, solicitando uma conta da nova pessoa. Alcances individual e próximos preservados.
+- Migration 018 grava responsável/conta/cartão juntos, com validação de grupo, revisão, repetição segura e preservação de pagamentos. Clientes antigos continuam usando o fluxo anterior quando não enviam responsável. Recorrências refeitas usam a nova pessoa.
+- Contas de investimento fica depois do gráfico mensal e antes do patrimônio imobiliário. Cabeçalho compacto alinha título e total, com detalhes decorativos reduzidos no celular.
+- Nova paleta ameixa, grafite e marfim, com dourado suave, aplicada ao login, navegação, saldos e temas claro/escuro.
+- Publicação: aplicar somente migrations pendentes, incluindo 018, depois publicar frontend. Nenhuma atualização remota nesta etapa.
+
+- Validação desta etapa: tipos, testes financeiros, banco PGlite com 001–018 e instalador passaram. 50 testes de navegador passaram, incluindo troca de responsável, limpeza de conta/cartão e alinhamento/posição do painel de investimentos. Capturas móveis, desktop, tema escuro e login inspecionadas. Compilação de produção passou.

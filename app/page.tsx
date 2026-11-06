@@ -185,11 +185,12 @@ function FinanceApp(){
  {error&&<div role="alert" className="card text-red-700">{error}</div>}
  <div role="tabpanel" id="screen-home" aria-labelledby="tab-home" hidden={mainTab!=='home'} className="tab-content space-y-5">
  <Metrics total={outlook.available} income={outlook.income} expense={outlook.expense} final={outlook.projected} until={outlook.through}/>
- <InvestmentBalance accounts={accounts.filter(a=>a.account_type==='investment')} members={members}/>
 
  <MovementList mode="urgent" events={events} accounts={accounts} members={members} paymentDates={paymentDates} onPay={openPay} onEdit={openEdit} onCorrect={openCorrection} onExpenseCorrection={openExpenseCorrection} onUndo={openUndo}/>
  <MovementList mode="history" events={events} accounts={accounts} members={members} paymentDates={paymentDates} onPay={openPay} onEdit={openEdit} onCorrect={openCorrection} onExpenseCorrection={openExpenseCorrection} onUndo={openUndo}/>
  <MonthlyOverview events={events} categories={categories} persistenceKey={"financas:view:"+user.id+":"+household}/>
+
+ <InvestmentBalance accounts={accounts.filter(a=>a.account_type==='investment')} members={members}/>
 
  <section className="card property-summary space-y-3" aria-label="Patrimônio em imóveis"><h2>Saldo aplicado em imóveis</h2><strong className="text-2xl">{brl(propertyEquity(properties))}</strong><p className="muted">Valor estimado dos imóveis próprios menos as dívidas. Patrimônio separado do saldo bancário disponível.</p>{properties.filter(p=>p.tenure==='owned').map(p=><article className="transaction" key={p.id}><div><h3>{p.name}</h3><small>{p.city}{p.payment_status==='financed'?` · ${p.pending_installments??0} parcelas pendentes`:''}</small></div><b>{brl(Number(p.estimated_value)-Number(p.debt??0))}</b></article>)}</section>
  </div>
@@ -204,7 +205,7 @@ function FinanceApp(){
   {payment&&<PaymentDialog key={payment.id+paymentMode} db={db} event={payment} mode={paymentMode} accounts={accounts} previousAccounts={paymentAccounts[payment.id]??[]} paidDate={paymentDates[payment.id]} reload={()=>load(user)} onClose={()=>setPayment(null)}/>}
 
 
-  {editing&&<EventEditor key={editing.id} db={db} event={editing} categories={categories} cards={cards} accounts={accounts} properties={properties} reload={()=>load(user)} onClose={()=>setEditing(null)}/>}
+  {editing&&<EventEditor key={editing.id} db={db} event={editing} members={members} categories={categories} cards={cards} accounts={accounts} properties={properties} reload={()=>load(user)} onClose={()=>setEditing(null)}/>}
 
 
 
