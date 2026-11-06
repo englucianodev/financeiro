@@ -59,3 +59,10 @@ Nenhuma configuração Auth ou migration foi aplicada remotamente. Continuam vá
 - Transferências aceitam datas retroativas e registram data efetiva separada do horário real do ledger, atualizando saldos uma vez. Datas futuras continuam agendadas. Nova migration 015; setup atualizado para 001–015.
 - Publicação: aplicar somente migrations pendentes, incluindo 015, e publicar frontend na Vercel. Sem novas chaves. Nenhuma atualização remota foi realizada.
 - Verificações já concluídas: tipos, testes financeiros/mensais, banco PGlite com migrations 001–015 (crédito, fatura única, datas retroativas, permissões e idempotência) e instalador. Suíte ampliada de 40 testes de navegador passou, incluindo crédito sem duplicidade, transferências retroativas e todos os filtros/sinais de Transações. Tela de Transações em celular inspecionada visualmente. Quatro cenários adicionais dos ajustes finais dos filtros e a compilação de produção também passaram.
+
+## Reparo do ajuste rápido de saldo
+
+- Relato de erro genérico de API/banco desatualizado ao ajustar saldo. A RPC usada é `adjust_account_balance`, introduzida em 012. O erro bruto do ambiente publicado não foi obtido; função ausente/cache desatualizado são hipóteses compatíveis com o código.
+- Preparado `supabase/repair_balance_adjustment.sql`: transação com verificação dos pré-requisitos (base até 010), criação/substituição da função equivalente à 012, permissões explícitas e recarga do cache PostgREST. Não modifica dados financeiros e pode ser repetido.
+- `node tests/setup.mjs` passou com remoção simulada da função, reaplicação repetida do reparo, bloqueio de acesso anônimo, preservação de saldos e metadados, rejeição de saldo desatualizado e prevenção de duplicidade no ajuste.
+- Ainda precisa executar o arquivo no SQL Editor do projeto Supabase usado pela Vercel. Nenhuma alteração foi feita no banco remoto. Não foi necessário alterar o frontend.

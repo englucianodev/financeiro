@@ -113,3 +113,11 @@ O menu “+” fecha ao tocar/clicar fora, mover o foco para fora ou pressionar 
 - A opção pode ser alterada com o alcance Só este lançamento ou Este e os próximos. As mesmas proteções de revisão, permissão e repetição de requisições são mantidas. Marcar Já pago no cartão registra a data da anotação para o resumo da semana; não equivale ao pagamento bancário da fatura.
 - Em Contas → Editar conta de origem → Transferir, datas anteriores e a data de hoje registram a transferência imediatamente; datas futuras são agendadas. O banco guarda a data efetiva escolhida e mantém o horário real de registro no ledger para auditoria. O saldo atual é atualizado, sem reescrever lançamentos históricos. Confirmar um agendamento vencido preserva sua data prevista como data efetiva.
 - Publicação: aplicar migrations anteriores pendentes e `015_credit_annotations_and_dated_transfers.sql`, depois publicar o frontend na Vercel. O instalador 001–015 é somente para banco novo. Nenhuma nova chave ou configuração Auth é necessária.
+
+## Erro de API desatualizada no ajuste rápido de saldo
+
+O saldo clicável usa `adjust_account_balance`, da migration 012. A mensagem genérica da interface também cobre outros erros de tabela/função ausente; confirme a chamada original nos logs da API quando necessário.
+
+No SQL Editor do mesmo projeto Supabase configurado na Vercel, execute `supabase/repair_balance_adjustment.sql`. O reparo restaura a função e suas permissões e envia `NOTIFY pgrst, 'reload schema'`. Pode ser repetido sem modificar saldos, contas ou lançamentos. Exige a base das migrations anteriores, incluindo 010; se ela faltar, interrompe antes de fazer alterações e orienta aplicar as pendências em ordem. Atualize a página após a execução. Um deploy da Vercel não instala funções no banco.
+
+Verificação local do reparo: `node tests/setup.mjs`, incluindo função removida, repetição do reparo, permissões, preservação do saldo e ajuste posterior auditado sem duplicidade.
