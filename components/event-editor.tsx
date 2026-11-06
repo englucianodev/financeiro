@@ -6,19 +6,21 @@ import type {PropertyRecord} from './properties-panel';
 import CreditFields,{type CreditState} from './credit-fields';
 import {errorMessage} from '@/lib/errors';
 
-export default function EventEditor({db,event,accounts,properties,reload,onClose,cards}:{cards:CreditCard[];db:SupabaseClient;event:ViewEvent;accounts:ViewAccount[];properties:PropertyRecord[];reload:()=>Promise<void>;onClose:()=>void}){
+export default function EventEditor({db,event,accounts,properties,reload,onClose,cards,categories}:{categories:{name:string;kind:string;active:boolean;deleted_at?:string|null}[];cards:CreditCard[];db:SupabaseClient;event:ViewEvent;accounts:ViewAccount[];properties:PropertyRecord[];reload:()=>Promise<void>;onClose:()=>void}){
  const dialog=useRef<HTMLDialogElement>(null),lock=useRef(false),keys=useRef(new Map<string,string>());
  const [account,setAccount]=useState(accounts.some(a=>a.id===event.account_id&&a.owner_id===event.owner_id)?event.account_id:''),[amount,setAmount]=useState(String(event.amount)),[due,setDue]=useState(event.due_date);
  const [scope,setScope]=useState('single'),[changeRecurrence,setChangeRecurrence]=useState(false),[unit,setUnit]=useState('months'),[every,setEvery]=useState(1),[end,setEnd]=useState('');
  const [property,setProperty]=useState(event.property_id??''),[installment,setInstallment]=useState(event.is_property_installment??false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[confirmDelete,setConfirmDelete]=useState(false),[rulesReady,setRulesReady]=useState(false);
  const [credit,setCredit]=useState<CreditState>(event.credit_state??'none'),[paymentCard,setPaymentCard]=useState(event.payment_card_id??'');
+ const [category,setCategory]=useState(event.category??'');
+ const categoryOptions=Array.from(new Set([...(event.category?[event.category]:[]),...categories.filter(c=>c.active&&!c.deleted_at&&c.kind===event.kind).map(c=>c.name)])).sort((a,b)=>a.localeCompare(b,'pt-BR'));
  const eligible=event.kind==='expense'&&properties.some(p=>p.id===property&&p.tenure==='owned'&&p.payment_status==='financed');
  useEffect(()=>{const el=dialog.current;if(el&&!el.open)el.showModal();return()=>{el?.close()}},[]);
  useEffect(()=>{let active=true;db.rpc('get_event_recurrence',{p_event:event.id}).then(({data,error})=>{if(!active)return;if(error){setError(errorMessage(error));return}if(data&&['once','days','months'].includes(data.unit)){setUnit(data.unit);setEvery(data.every??1);setEnd(data.end_date??'')}setRulesReady(true)});return()=>{active=false}},[db,event.id]);
  async function save(action:'edit'|'cancel'){
   if(lock.current)return;lock.current=true;setBusy(true);setError('');
-  const params={p_event:event.id,p_scope:scope,p_action:action,p_account:account,p_amount:Number(amount),p_due:due,p_property:event.kind==='expense'?(property||null):null,p_installment:eligible&&installment,p_change_recurrence:changeRecurrence,p_unit:unit,p_every:every,p_end:end||null,p_expected_version:event.edit_version??0,p_credit_state:event.kind==='expense'?credit:'none',p_payment_card:event.kind==='expense'&&credit!=='none'?(paymentCard||null):null};
+  const params={p_category:category||null,p_event:event.id,p_scope:scope,p_action:action,p_account:account,p_amount:Number(amount),p_due:due,p_property:event.kind==='expense'?(property||null):null,p_installment:eligible&&installment,p_change_recurrence:changeRecurrence,p_unit:unit,p_every:every,p_end:end||null,p_expected_version:event.edit_version??0,p_credit_state:event.kind==='expense'?credit:'none',p_payment_card:event.kind==='expense'&&credit!=='none'?(paymentCard||null):null};
   const signature=JSON.stringify(params);let key=keys.current.get(signature);if(!key){key=crypto.randomUUID();keys.current.set(signature,key)}
   try{const r=await db.rpc('revise_events',{p_id:key,...params});if(r.error)throw r.error;await reload();onClose()}catch(e){setError(errorMessage(e))}finally{lock.current=false;setBusy(false)}
  }
@@ -26,6 +28,7 @@ export default function EventEditor({db,event,accounts,properties,reload,onClose
   <form className="form-grid" onSubmit={(e:FormEvent)=>{e.preventDefault();setConfirmDelete(false);void save('edit')}}>
    <h2 className="form-title">Editar · {event.title}</h2>
    <label>{event.kind==='expense'?'Conta que será debitada':'Conta de recebimento'}<select required value={account} onChange={e=>setAccount(e.target.value)}><option value="">Selecione uma conta</option>{accounts.filter(a=>a.owner_id===event.owner_id).map(a=><option value={a.id} key={a.id}>{a.name}</option>)}</select></label>
+   <label>Categoria<select aria-label="Categoria" required value={category} onChange={e=>setCategory(e.target.value)}><option value="">Selecione uma categoria</option>{categoryOptions.map(c=><option key={c}>{c}</option>)}</select></label>
    <label>Valor<input type="number" inputMode="decimal" required min=".01" step=".01" value={amount} onChange={e=>setAmount(e.target.value)}/></label>
    <label>Vencimento<input type="date" required value={due} onChange={e=>setDue(e.target.value)}/></label>
    {event.kind==='expense'&&<><CreditFields state={credit} onChange={setCredit} card={paymentCard} onCard={setPaymentCard} cards={cards} owner={event.owner_id}/><label>Imóvel vinculado<select value={property} onChange={e=>{setProperty(e.target.value);setInstallment(false)}}><option value="">Sem imóvel</option>{properties.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label>{eligible&&<label className="check"><input type="checkbox" checked={installment} onChange={e=>setInstallment(e.target.checked)}/>Parcela do financiamento</label>}</>}

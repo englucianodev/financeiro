@@ -204,7 +204,7 @@ function FinanceApp(){
   {payment&&<PaymentDialog key={payment.id+paymentMode} db={db} event={payment} mode={paymentMode} accounts={accounts} previousAccounts={paymentAccounts[payment.id]??[]} paidDate={paymentDates[payment.id]} reload={()=>load(user)} onClose={()=>setPayment(null)}/>}
 
 
-  {editing&&<EventEditor key={editing.id} db={db} event={editing} cards={cards} accounts={accounts} properties={properties} reload={()=>load(user)} onClose={()=>setEditing(null)}/>}
+  {editing&&<EventEditor key={editing.id} db={db} event={editing} categories={categories} cards={cards} accounts={accounts} properties={properties} reload={()=>load(user)} onClose={()=>setEditing(null)}/>}
 
 
 

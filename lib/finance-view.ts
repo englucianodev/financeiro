@@ -4,7 +4,7 @@ export type CreditCard={id:string;name:string;owner_id:string};
 export const isCashEvent=(event:{credit_state?:string})=>!event.credit_state||event.credit_state==='none';
 export const eventIsPaid=(event:ViewEvent)=>event.status==='settled'||event.credit_state==='paid';
 export function weekStart(current:string){const date=new Date(current+'T12:00:00Z');return shiftDate(current,-((date.getUTCDay()+6)%7))}
-export function transactionView(events:ViewEvent[],{month,current=today(),search='',kind='',category='',status='week'}:{month:string;current?:string;search?:string;kind?:string;category?:string;status?:string}){
+export function transactionView(events:ViewEvent[],{month,current=today(),search='',kind='',category='',status='all'}:{month:string;current?:string;search?:string;kind?:string;category?:string;status?:string}){
  const filtered=Boolean(search||kind||category||status!=='week');
  const rows=events.filter(e=>e.status!=='cancelled'&&e.due_date.startsWith(month)&&(!search||(e.title+' '+(e.category??'')).toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')))&&(!kind||e.kind===kind)&&(!category||e.category===category))
   .filter(e=>status==='paid'?eventIsPaid(e):status==='late'?!eventIsPaid(e)&&e.due_date<current:status==='upcoming'?!eventIsPaid(e)&&e.due_date>=current:true)

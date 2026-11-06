@@ -74,3 +74,20 @@ html.dark .total-expense strong{color:#ff9c8c}
 .payment-dialog .button-row{display:grid;grid-template-columns:1fr 1fr}.payment-dialog .button-row button{min-width:0;width:100%;margin:0}.payment-dialog .button-row button:last-child{grid-column:auto;background:var(--accent-soft);color:var(--accent);border:1px solid var(--line)}
 
 .totals-grid>div>span{min-height:28px;line-height:14px}.totals-grid small{display:block;font-size:10px;color:var(--muted);margin-top:7px;line-height:1.4}
+
+/* Pearl, midnight teal and champagne, with restrained depth. */
+:root{--bg:#f3f2ef;--panel:#fffefa;--ink:#17343c;--line:#dddeda;--muted:#586e73;--accent:#116570;--accent-soft:#e9f1ef}
+html.dark{--bg:#0b151e;--panel:#142530;--ink:#edf4f3;--line:#304550;--muted:#afc2c8;--accent:#85d5ce;--accent-soft:#203a43}
+body{background:radial-gradient(ellipse at 8% 0%,#bba37718,transparent 48%),radial-gradient(ellipse at 96% 40%,#4c9b9e12,transparent 50%),var(--bg);background-attachment:fixed}
+.app-header{background:linear-gradient(125deg,#102c39,#164753 65%,#355b61);box-shadow:0 18px 48px #102c3926,inset 0 1px #ffffff26;border:1px solid #c0ac7a55}
+.card,.metric{box-shadow:0 10px 28px #102c390a,inset 0 1px #ffffff25;border-color:var(--line)}
+button{transition:transform .2s ease,box-shadow .2s ease,background .2s ease}button:active:not(:disabled){transform:translateY(1px)}button:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.investment-balance{position:relative;overflow:hidden;margin:22px 0;padding:28px;border:1px solid #ad945d88;border-radius:24px;background:linear-gradient(125deg,#112d3a,#1a4851);color:#f7f2e5;box-shadow:0 16px 36px #102c3924,inset 0 1px #e4c98c33}
+.investment-heading{display:flex;gap:15px;align-items:center}.investment-emblem{display:grid;place-items:center;width:54px;height:54px;flex:none;border:1px solid #dcc38a66;border-radius:17px;background:#ddc28a12;color:#e3cb94}.investment-kicker{font-size:10px;letter-spacing:.16em;color:#e3cb94}.investment-heading h2{font-size:20px;margin:5px 0}.investment-heading p,.investment-empty{font-size:12px;color:#c5d8dc}.investment-total{display:block;font-size:clamp(28px,5vw,40px);letter-spacing:-.04em;margin:24px 0;font-variant-numeric:tabular-nums}.investment-accounts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:12px}.investment-accounts li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:15px;border:1px solid #ffffff20;background:#ffffff08;border-radius:14px}.investment-accounts small{display:block;color:#c5d8dc;margin-top:5px}.investment-accounts b{white-space:nowrap;font-variant-numeric:tabular-nums}.home-movements .movement-actions{grid-template-columns:1fr}.home-movements .movement-actions button{justify-self:end}
+@keyframes tab-reveal{from{opacity:0;transform:perspective(1100px) translateY(9px) rotateX(.6deg)}to{opacity:1;transform:none}}
+@keyframes balance-icon{0%,100%{transform:translateY(0) rotate(0)}45%{transform:translateY(-3px) rotate(-4deg)}}
+@keyframes chart-reveal{from{opacity:.4;transform:scale(.96) rotate(-3deg)}to{opacity:1;transform:none}}
+.app-shell [role="tabpanel"]:not([hidden]){animation:tab-reveal .35s ease both}.metric>svg,.investment-emblem>svg{animation:balance-icon 3.5s ease-in-out 2}.donut-chart>svg{animation:chart-reveal .8s ease both;transform-origin:center}
+@media(hover:hover){.metric:hover{box-shadow:0 16px 30px #102c3915;transform:perspective(1000px) translateY(-2px) rotateX(1deg)}button:hover:not(:disabled){box-shadow:0 5px 14px #102c3918}}
+@media(max-width:760px){.investment-balance{padding:22px 18px}.investment-heading h2{font-size:18px}.investment-accounts{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.metric:hover{transform:none}}

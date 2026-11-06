@@ -87,3 +87,14 @@ Nenhuma configuração Auth ou migration foi aplicada remotamente. Continuam vá
 - Testes financeiros/tipos passaram, incluindo fim de mês, fevereiro bissexto, dezembro, registros pagos, parciais de 0,88, investimentos e transferências. Nenhum banco remoto alterado; não há nova migration nesta atualização.
 
 - Validação final desta alteração: seis testes de navegador passaram (previsão mensal, filtros/totais, crédito e visualização em celular), além dos testes financeiros, tipos e compilação de produção. Interface sem Total Parcial inspecionada em 390px.
+
+# Continuidade — Início, tema e categorias
+
+- Retomado o pedido interrompido: Saldo Disponível sem subtítulo, remoção dos resumos Uso diário, Contas de despesas recorrentes e investimentos informativos. Contas de investimento têm painel próprio com total e saldo por conta.
+- Início sem botões de edição, recebimento ou correção. Apenas Marcar pago em Vencimentos e Atrasos. Ações completas continuam em Transações.
+- Tema pérola, azul profundo e champanhe, com fundo discreto, sombras, profundidade, transições entre abas e animações finitas nos ícones e gráfico. Movimento reduzido respeitado.
+- Transações abre com Entradas e saídas, Categoria Todas e Status Todas, mostrando o mês completo. Semana atual em diante continua opcional.
+- Edição permite trocar categoria com alcance individual ou próximos, incluindo recriação de recorrência. Categoria antiga preservada como opção; novas escolhas limitadas às categorias ativas do mesmo tipo e grupo. Migration 017 mantém permissões, revisão e repetição segura.
+- Publicação: aplicar migrations pendentes em ordem, incluindo 016 e 017, e publicar frontend. Nenhuma alteração remota nesta etapa.
+
+- Validação desta etapa: tipos, testes financeiros, PGlite 001–017 e instalador passaram. 46 cenários existentes de navegador passaram; o novo cenário de categoria/filtros passou após ajuste do rótulo acessível e navegação por teclado para evitar o indicador do servidor de desenvolvimento. Compilação final passou. Capturas móveis de Transações e Início inspecionadas.

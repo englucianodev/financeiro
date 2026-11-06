@@ -5,7 +5,7 @@ import {alphabetic,checklist,shiftDate,monthLabel,transactionView,eventIsPaid,is
 import {useViewState,validMonth} from '@/lib/use-view-state';
 import {brl,today} from '@/lib/money';import {AccountMark} from './finance-visuals';import MonthNav from './month-nav';
 export default function MovementList({events,accounts,members,mode,onPay,onEdit,onCorrect,onExpenseCorrection,onUndo,onCreate,paymentDates={},persistenceKey}:{events:ViewEvent[];accounts:ViewAccount[];members:{user_id:string;display_name:string}[];mode:'pending'|'history'|'urgent';onPay:(e:ViewEvent)=>void;onEdit:(e:ViewEvent)=>void;onCorrect:(e:ViewEvent)=>void;onExpenseCorrection:(e:ViewEvent)=>void;onUndo:(e:ViewEvent)=>void;onCreate?:()=>void;paymentDates?:Record<string,string>;persistenceKey?:string}){
- const [search,setSearch]=useState(''),[kind,setKind]=useState(''),[category,setCategory]=useState(''),[status,setStatus]=useState('week'),[notice,setNotice]=useState('');
+ const [search,setSearch]=useState(''),[kind,setKind]=useState(''),[category,setCategory]=useState(''),[status,setStatus]=useState('all'),[notice,setNotice]=useState('');
  const [month,setMonth]=useViewState(persistenceKey?persistenceKey+':pending-month':null,today().slice(0,7),validMonth);const scroll=useRef<HTMLDivElement>(null);
  useEffect(()=>{if(mode==='pending')scroll.current?.scrollTo({top:0})},[month,mode,search,kind,category,status]);
  const current=today(),fiveAgo=shiftDate(current,-4),dateFor=(e:ViewEvent)=>eventIsPaid(e)?(e.credit_paid_date??paymentDates[e.id]??e.settled_at?.slice(0,10)??e.due_date):e.due_date;

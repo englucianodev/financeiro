@@ -11,7 +11,7 @@ assert.equal(monthlyCashOutlook([],[],[],'2028-02-28').through,'2028-02-29');ass
 assert.equal(monthlySummary(outlookEvents,'2026-11').balance,transactionView(outlookEvents,{month:'2026-11',status:'all',current:'2026-11-05'}).balance);
 assert.equal(weekStart('2026-11-05'),'2026-11-02');assert.equal(weekStart('2026-11-01'),'2026-10-26');
 const transactionRows=[make('old','Despesa antiga','2026-11-01'),{...make('now','Despesa semana','2026-11-03'),amount:60},make('paid','Despesa paga','2026-11-04','settled',100),{...make('income','Receita','2026-11-05'),kind:'income',amount:500},{...make('credit','Luz no crédito','2026-11-06'),credit_state:'planned',amount:200},make('future','Despesa futura','2026-11-10'),make('other','Outro mês','2026-12-01'),make('cancel','Cancelada','2026-11-05','cancelled')];
-assert.deepEqual(transactionView(transactionRows,{month:'2026-11',current:'2026-11-05'}).rows.map(e=>e.id),['now','paid','income','credit','future']);
+assert.deepEqual(transactionView(transactionRows,{month:'2026-11',current:'2026-11-05',status:'week'}).rows.map(e=>e.id),['now','paid','income','credit','future']);
 const allTransactions=transactionView(transactionRows,{month:'2026-11',current:'2026-11-05',status:'all'});assert.equal(allTransactions.income,500);assert.equal(allTransactions.expense,360);assert.equal(allTransactions.balance,140);
 assert.equal(transactionView(transactionRows,{month:'2026-11',current:'2026-11-05',kind:'expense'}).balance,-360);assert.equal(transactionView(transactionRows,{month:'2026-11',current:'2026-11-05',kind:'income'}).balance,500);assert.equal(transactionView(transactionRows,{month:'2026-11',current:'2026-11-05',status:'paid'}).balance,-100);assert.equal(transactionView(transactionRows,{month:'2026-11',current:'2026-11-05',status:'late'}).balance,-160);assert.equal(transactionView(transactionRows,{month:'2026-11',current:'2026-11-05',status:'upcoming'}).balance,400);
 assert.equal(monthlySummary(transactionRows,'2026-11').expense,360);assert.doesNotMatch(checklist(transactionRows,'2026-11','2026-11-05'),/Luz no crédito/);
@@ -26,3 +26,5 @@ const rows=[{date:'2026-11-05',byAccount:{a:-50,b:100}},{date:'2026-11-06',byAcc
 const flows=[{id:'in',account_id:'a',amount:100,due_date:'2026-11-05',status:'pending'},{id:'out',account_id:'a',amount:-150,due_date:'2026-11-05',status:'pending'},{id:'t',account_id:'a',amount:-10,due_date:'2026-11-05',status:'pending'},{id:'t-to',account_id:'b',amount:10,due_date:'2026-11-05',status:'pending'}];
 assert.deepEqual(dailyMovements(rows,flows,'2026-11-05'),[{date:'2026-11-05',income:100,expense:150,deficit:true}]);
 assert.deepEqual(['Zebra','Água','Energia'].sort(alphabetic),['Água','Energia','Zebra']);console.log('Checklist mensal, categorias e barras diárias com déficit e sem dupla contagem de transferências OK');
+
+assert.deepEqual(transactionView(transactionRows,{month:'2026-11',current:'2026-11-05'}),allTransactions);
