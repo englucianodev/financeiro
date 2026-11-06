@@ -1,3 +1,4 @@
+import {statementPageText} from '../../../../lib/pdf-layout';
 import {createClient} from '@supabase/supabase-js';
 import {openPassword,sealPassword} from '../../../../lib/pdf-password';
 export const runtime='nodejs';
@@ -20,8 +21,7 @@ export async function POST(request:Request){
  let doc;try{doc=await task.promise}catch{await task.destroy();return reply({needsPassword:true,hasSaved:hadSaved})}
  const pages:{text:string;image?:string}[]=[];
  try{if(doc.numPages>30)return reply({error:'PDF limitado a 30 páginas'},400);
- for(let n=1;n<=doc.numPages;n++){const page=await doc.getPage(n),content=await page.getTextContent();let text='',y:number|null=null;
- for(const item of content.items)if('str' in item){if(y!==null&&Math.abs(y-item.transform[5])>3)text+='\n';text+=item.str+' ';y=item.transform[5]}
+ for(let n=1;n<=doc.numPages;n++){const page=await doc.getPage(n),content=await page.getTextContent();const text=statementPageText(content.items.filter((i):i is Extract<typeof i,{str:string}>=>'str' in i));
  if(text.trim().length<10){const viewport=page.getViewport({scale:Math.min(2,1600/page.getViewport({scale:1}).width,2200/page.getViewport({scale:1}).height)}),surface=canvas.createCanvas(Math.ceil(viewport.width),Math.ceil(viewport.height));await page.render({canvas:surface as never,canvasContext:surface.getContext('2d') as never,viewport}).promise;pages.push({text,image:surface.toDataURL('image/png')})}else pages.push({text});
  }
  if(pages.reduce((n,p)=>n+p.text.length+(p.image?.length??0),0)>3*1024*1024)return reply({error:'PDF digitalizado muito grande para abertura protegida. Divida o documento ou use CSV.'},413);

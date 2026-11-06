@@ -1,3 +1,4 @@
+import {statementPageText} from './pdf-layout';
 export async function readStatementFile(file:File,progress:(s:string)=>void,protectedReader?:(file:File)=>Promise<string>){
  if(file.size>15*1024*1024)throw new Error('Arquivo limitado a 15 MB.');
  const buffer=await file.arrayBuffer(),hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',buffer))).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -9,8 +10,7 @@ export async function readStatementFile(file:File,progress:(s:string)=>void,prot
  if(doc.numPages>30){await task.destroy();throw new Error('PDF limitado a 30 páginas; divida o documento antes de importar.')}
  let text='',worker:Awaited<ReturnType<typeof import('tesseract.js')['createWorker']>>|undefined;
  try{for(let i=1;i<=doc.numPages;i++){
-  progress('Lendo página '+i+'/'+doc.numPages);const page=await doc.getPage(i),content=await page.getTextContent();let line='',lastY:number|null=null;
-  for(const item of content.items){if('str' in item){if(lastY!==null&&Math.abs(item.transform[5]-lastY)>3){text+=line+'\n';line=''}line+=item.str+' ';lastY=item.transform[5]}}text+=line+'\n';
+  progress('Lendo página '+i+'/'+doc.numPages);const page=await doc.getPage(i),content=await page.getTextContent();text+=statementPageText(content.items.filter((i):i is Extract<typeof i,{str:string}>=>'str' in i));
   if(content.items.filter(item=>'str' in item).map(item=>'str' in item?item.str:'').join('').trim().length<10){
    if(!worker){const {createWorker}=await import('tesseract.js');let fail!:(e:Error)=>void;const failed=new Promise<never>((_,reject)=>{fail=reject});const timer=window.setTimeout(()=>fail(new Error('OCR não iniciou em 60 segundos. Verifique os recursos locais ou use CSV.')),60000);try{worker=await Promise.race([createWorker('por',1,{workerPath:'/vendor/ocr/worker.min.js',corePath:location.origin+'/vendor/ocr/tesseract-core-lstm.wasm.js',langPath:location.origin+'/vendor/ocr',logger:()=>{},gzip:false,errorHandler:e=>fail(new Error(String(e))),cacheMethod:'none',workerBlobURL:false}),failed])}finally{window.clearTimeout(timer)}}
    progress('OCR local da página '+i);const viewport=page.getViewport({scale:Math.min(2,1800/page.getViewport({scale:1}).width)}),canvas=document.createElement('canvas');canvas.width=viewport.width;canvas.height=viewport.height;

@@ -113,3 +113,16 @@ html.dark button{color:#fff}html.dark .bottom-nav button,html.dark .more-menu bu
 .statement-dialog{max-width:1000px;width:calc(100% - 24px)}.statement-dialog section{margin:20px 0;padding-top:15px;border-top:1px solid var(--line)}.statement-dialog input,.statement-dialog select{margin-bottom:10px}.email-settings textarea{width:100%;min-height:100px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px}
 
 .statement-dialog{overflow-wrap:anywhere}.statement-dialog fieldset{min-width:0}
+
+.category-list{max-height:480px;overflow-y:auto;overscroll-behavior:contain;margin:16px 0;scrollbar-gutter:stable}
+.category-row{height:80px;box-sizing:border-box;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line);padding:8px 4px}
+.category-row.selected{background:var(--accent-soft);border-radius:8px}
+.category-select{flex:1;min-width:0;text-align:left;background:transparent;color:inherit;border:0;box-shadow:none;padding:4px;display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.category-select:hover{background:transparent}
+.category-actions{display:flex;gap:6px;flex-shrink:0}
+.category-actions button{padding:7px 9px;font-size:.8rem}
+
+.category-select[aria-pressed=true]{background:transparent;color:var(--ink);box-shadow:none;outline:none}
+.category-select span{overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+.category-select:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
