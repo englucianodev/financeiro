@@ -66,3 +66,15 @@ Nenhuma configuração Auth ou migration foi aplicada remotamente. Continuam vá
 - Preparado `supabase/repair_balance_adjustment.sql`: transação com verificação dos pré-requisitos (base até 010), criação/substituição da função equivalente à 012, permissões explícitas e recarga do cache PostgREST. Não modifica dados financeiros e pode ser repetido.
 - `node tests/setup.mjs` passou com remoção simulada da função, reaplicação repetida do reparo, bloqueio de acesso anônimo, preservação de saldos e metadados, rejeição de saldo desatualizado e prevenção de duplicidade no ajuste.
 - Ainda precisa executar o arquivo no SQL Editor do projeto Supabase usado pela Vercel. Nenhuma alteração foi feita no banco remoto. Não foi necessário alterar o frontend.
+
+## Quitação real e desfazer pagamentos — migration 016
+
+- Causa do resíduo: a confirmação anterior sempre acumulava pagamento parcial, e 370 − 369,12 também preenchia o restante com uma representação decimal inválida para step .01. Novo diálogo calcula em centavos e usa quitação pelo valor efetivo como padrão; parcial exige marcação explícita.
+- Nova RPC `manage_event_payment`: confirmar (quitar/parcelar explicitamente), corrigir total pago, encerrar pelo total já pago sem novo débito e desfazer. Controle de revisão, chaves de repetição, RLS/permissões e transações atômicas; auditoria/ledger preservados. Endpoints antigos de pagamentos/faturas mantêm seu contrato.
+- Novo diálogo nativo para confirmação/correção/desfazer, com erros visíveis dentro da janela. Corrigir pagamento e Desfazer pagamento disponíveis no Início, Transações e Histórico. Correções devolvem os lançamentos antigos às contas originais e registram o total correto na conta escolhida; pagamentos de múltiplas contas exigem seleção explícita.
+- Desfazer recebimento reduz o saldo e mantém supressão de confirmação automática. Desfazer anotação de cartão só retorna a A pagar no cartão. Estornos/correções preservam a contagem de parcelas dos imóveis.
+- Resíduos existentes não são alterados automaticamente: Marcar pago → Quitar pelo valor já pago, sem débito adicional. Correção total também pode ser feita pelo botão Corrigir pagamento.
+- Verificados localmente: tipos, testes financeiros, PGlite migrations 001–016, instalação nova e reparo do ajuste de saldo. Banco cobre 370→369,12, resíduo de 0,88, pagamento parcial explícito, valor maior, correção de conta/data/valor, desfazer com repetição segura, stale revisions, permissões e parcelas de imóveis.
+- Publicação pendente: aplicar migrations em ordem até 016 e fazer deploy do frontend. Nenhuma alteração remota foi executada.
+
+- Validação de navegador: 45 cenários passaram, incluindo quitação 370→369,12, fechamento sem débito do resíduo, corrigir/desfazer nas listas, erros visíveis e pagamento parcial explícito; três cenários adicionais passaram após destacar a quitação do resíduo. Compilação de produção passou. Correções de parcelas já quitadas preservam o vínculo com o financiamento original, inclusive após reconfiguração do imóvel; despesas variáveis mantêm atualização de previsões futuras.

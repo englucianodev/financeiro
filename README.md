@@ -7,8 +7,8 @@ Aplicação Next.js + Supabase com cinco telas: **Início, Pendências, Calendá
 1. Node.js 20.9+; execute `npm ci`.
 2. Copie `.env.example` para `.env.local` com URL do Supabase e chave pública/anon/publishable. Nunca use `service_role` em `NEXT_PUBLIC_*`.
 3. Configure Supabase Auth com Site URL e redirecionamentos do domínio.
-4. **Banco com migrations 001–014:** revise e aplique somente `015_credit_annotations_and_dated_transfers.sql`. Se houver migrations anteriores pendentes, execute-as primeiro em ordem. Faça backup antes de atualizar banco publicado.
-5. **Banco sem estrutura do aplicativo:** use `supabase/setup.sql` (001–015 em transação, com proteção contra instalação sobre tabelas existentes). Nunca use o instalador para atualizar banco existente.
+4. **Banco com migrations 001–015:** revise e aplique somente `016_effective_payments_and_undo.sql`. Se houver migrations anteriores pendentes, execute-as primeiro em ordem. Faça backup antes de atualizar banco publicado.
+5. **Banco sem estrutura do aplicativo:** use `supabase/setup.sql` (001–016 em transação, com proteção contra instalação sobre tabelas existentes). Nunca use o instalador para atualizar banco existente.
 6. Execute `npm run dev` ou publique na Vercel com preset Next.js, diretório contendo `package.json`, build `npm run build` e saída automática. Informe as duas variáveis públicas antes do deploy.
 
 Nenhuma migration foi aplicada remotamente nesta implementação. A homologação no Supabase hospedado e o deploy na Vercel continuam necessários.
@@ -56,7 +56,7 @@ npm run test:e2e
 npm run build
 ```
 
-Banco: PostgreSQL embarcado PGlite, migrations 001–015, RLS/RPCs, isolamento, preservação de legado, idempotência, edição auditada e recebimentos automáticos/correções. Playwright: API simulada e Edge no Windows; em outros sistemas instale Chromium. Testes locais não comprovam concorrência com múltiplas conexões nem a configuração remota do Cron.
+Banco: PostgreSQL embarcado PGlite, migrations 001–016, RLS/RPCs, isolamento, preservação de legado, idempotência, edição auditada e recebimentos automáticos/correções. Playwright: API simulada e Edge no Windows; em outros sistemas instale Chromium. Testes locais não comprovam concorrência com múltiplas conexões nem a configuração remota do Cron.
 
 ## Limites
 
@@ -121,3 +121,13 @@ O saldo clicável usa `adjust_account_balance`, da migration 012. A mensagem gen
 No SQL Editor do mesmo projeto Supabase configurado na Vercel, execute `supabase/repair_balance_adjustment.sql`. O reparo restaura a função e suas permissões e envia `NOTIFY pgrst, 'reload schema'`. Pode ser repetido sem modificar saldos, contas ou lançamentos. Exige a base das migrations anteriores, incluindo 010; se ela faltar, interrompe antes de fazer alterações e orienta aplicar as pendências em ordem. Atualize a página após a execução. Um deploy da Vercel não instala funções no banco.
 
 Verificação local do reparo: `node tests/setup.mjs`, incluindo função removida, repetição do reparo, permissões, preservação do saldo e ajuste posterior auditado sem duplicidade.
+
+## Quitação por valor efetivo, correção e desfazer
+
+- Marcar pago usa o valor efetivo como quitação por padrão. Exemplo: previsão R$ 370,00 e pagamento R$ 369,12 resultam em lançamento quitado com valor R$ 369,12 e débito de R$ 369,12. A diferença não vira pendência. Um valor maior também ajusta a despesa ao total real.
+- Pagamento parcial só ocorre ao marcar explicitamente Pagamento parcial (manter restante pendente). O campo de restante é calculado em centavos, evitando valores como 0,879999999 e bloqueios por validação decimal do navegador.
+- Para resíduos anteriores, abra Marcar pago e escolha Quitar pelo valor já pago. O total da transação é ajustado ao que já foi confirmado, sem outro débito, preservando pagamentos e datas. Não há correção automática dos resíduos na migration, pois podem existir parcelamentos/pagamentos parciais intencionais.
+- Corrigir pagamento aparece nas despesas que têm algum valor pago, tanto no Início/Transações quanto em Mais → Histórico. Informe o total efetivamente pago e a data. O servidor estorna os pagamentos anteriores e registra o valor corrigido na conta selecionada; a diferença é refletida no saldo. Quando há pagamentos em várias contas, é necessário escolher explicitamente a conta final. As parcelas de imóveis permanecem contadas uma única vez.
+- Desfazer pagamento pede confirmação, devolve às contas de origem exatamente o valor registrado e retorna a transação a pendente. Os registros anteriores são preservados como estornados. Recebimentos podem ser desfeitos; nesse caso, o valor é retirado da conta e a confirmação automática fica suspensa até novo registro manual. Anotações Já pago no cartão voltam a A pagar no cartão sem movimentação bancária.
+- A nova RPC `manage_event_payment` verifica a revisão da transação, permissões, valores e datas e mantém as operações atômicas e repetíveis sem duplicidade. As rotas antigas de pagamento parcial e pagamento de fatura continuam disponíveis para integrações existentes.
+- Publicação: aplique as migrations pendentes até `016_effective_payments_and_undo.sql`, depois publique o frontend atualizado na Vercel. A atualização não altera automaticamente pagamentos no banco publicado e não exige novas chaves.
