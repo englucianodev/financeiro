@@ -1,12 +1,12 @@
 export const brl=(n:number)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(n);
 export const today=()=>new Intl.DateTimeFormat("en-CA",{timeZone:"America/Fortaleza",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-export function project(accounts:{id:string;name:string;balance:number}[],events:{id:string;account_id:string;amount:number;due_date:string;status:string}[],days=90,current=today()){
+export function project(accounts:{id:string;name:string;balance:number}[],events:{id:string;account_id:string;amount:number;due_date:string;status:string;credit_state?:string}[],days=90,current=today()){
  if(!Number.isInteger(days)||days<0||days>365)throw new Error("Horizonte inválido");
  const balances=Object.fromEntries(accounts.map(a=>[a.id,Math.round(Number(a.balance)*100)]));
  const result=[] as {date:string;total:number;byAccount:Record<string,number>}[];
  for(let i=0;i<=days;i++){
  const d=new Date(current+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+i);const date=d.toISOString().slice(0,10);
- for(const e of events)if(e.status==="pending"&&(e.due_date===date||(i===0&&e.due_date<date))&&e.account_id in balances)balances[e.account_id]+=Math.round(Number(e.amount)*100);
+ for(const e of events)if((!e.credit_state||e.credit_state==='none')&&e.status==="pending"&&(e.due_date===date||(i===0&&e.due_date<date))&&e.account_id in balances)balances[e.account_id]+=Math.round(Number(e.amount)*100);
  result.push({date,total:Object.values(balances).reduce((a,b)=>a+b,0)/100,byAccount:Object.fromEntries(Object.entries(balances).map(([id,value])=>[id,value/100]))});
  }return result;
 }

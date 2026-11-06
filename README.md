@@ -7,8 +7,8 @@ Aplicação Next.js + Supabase com cinco telas: **Início, Pendências, Calendá
 1. Node.js 20.9+; execute `npm ci`.
 2. Copie `.env.example` para `.env.local` com URL do Supabase e chave pública/anon/publishable. Nunca use `service_role` em `NEXT_PUBLIC_*`.
 3. Configure Supabase Auth com Site URL e redirecionamentos do domínio.
-4. **Banco com migrations 001–013:** revise e aplique somente `014_event_editing_and_property_installments.sql`. Se houver migrations anteriores pendentes, execute-as primeiro em ordem. Faça backup antes de atualizar banco publicado.
-5. **Banco sem estrutura do aplicativo:** use `supabase/setup.sql` (001–014 em transação, com proteção contra instalação sobre tabelas existentes). Nunca use o instalador para atualizar banco existente.
+4. **Banco com migrations 001–014:** revise e aplique somente `015_credit_annotations_and_dated_transfers.sql`. Se houver migrations anteriores pendentes, execute-as primeiro em ordem. Faça backup antes de atualizar banco publicado.
+5. **Banco sem estrutura do aplicativo:** use `supabase/setup.sql` (001–015 em transação, com proteção contra instalação sobre tabelas existentes). Nunca use o instalador para atualizar banco existente.
 6. Execute `npm run dev` ou publique na Vercel com preset Next.js, diretório contendo `package.json`, build `npm run build` e saída automática. Informe as duas variáveis públicas antes do deploy.
 
 Nenhuma migration foi aplicada remotamente nesta implementação. A homologação no Supabase hospedado e o deploy na Vercel continuam necessários.
@@ -56,7 +56,7 @@ npm run test:e2e
 npm run build
 ```
 
-Banco: PostgreSQL embarcado PGlite, migrations 001–014, RLS/RPCs, isolamento, preservação de legado, idempotência, edição auditada e recebimentos automáticos/correções. Playwright: API simulada e Edge no Windows; em outros sistemas instale Chromium. Testes locais não comprovam concorrência com múltiplas conexões nem a configuração remota do Cron.
+Banco: PostgreSQL embarcado PGlite, migrations 001–015, RLS/RPCs, isolamento, preservação de legado, idempotência, edição auditada e recebimentos automáticos/correções. Playwright: API simulada e Edge no Windows; em outros sistemas instale Chromium. Testes locais não comprovam concorrência com múltiplas conexões nem a configuração remota do Cron.
 
 ## Limites
 
@@ -97,10 +97,19 @@ O menu “+” fecha ao tocar/clicar fora, mover o foco para fora ou pressionar 
 - A baixa das parcelas não calcula amortização ou juros: a dívida em reais continua sendo informada na edição do imóvel conforme o saldo fornecido pela instituição financeira. Pagamentos históricos não recebem vínculo retroativo automático.
 - Para publicar, aplique as migrations pendentes até 014 no Supabase e publique o frontend atualizado na Vercel. Não há novas variáveis de ambiente nesta alteração. O instalador `setup.sql` é somente para banco novo.
 
-## Nova identidade e análise mensal
+## Nova identidade, Transações e análise mensal
 
 - Tema em azul profundo, verde e tons claros, com versão escura, botões alinhados e navegação adaptada ao celular. Login e título público: Finanças Compartilhadas. Rodapé com créditos a Luciano (@englucianodev), direitos reservados e links para GitHub e Instagram.
-- Pendências contém uma única lista dos lançamentos ainda pendentes no mês selecionado, incluindo os vencidos desse mês. Começa no mês atual; as setas navegam para meses anteriores e seguintes. Os filtros e os totais respeitam o mês. A lista usa rolagem vertical e uma altura limitada a no máximo dez linhas; em celulares mostra menos linhas para caber na tela. O mês escolhido persiste ao atualizar a página. Pendências de meses anteriores continuam acessíveis pelas setas e no quadro Vencimentos e Atrasos do Início.
-- O gráfico Seu dinheiro no tempo e a projeção por conta foram retirados do Início. Em seu lugar, Seu mês em números apresenta um gráfico de rosca com as despesas por categoria, cores distintas, valores e percentuais. O modo Entradas e saídas compara os totais e indica déficit, sobra ou equilíbrio. Cada modo usa lançamentos não cancelados por vencimento, incluindo pagos e previstos, sem descontar pagamentos parciais do total mensal e sem incluir transferências internas. O balanço representa entradas menos saídas do mês; não soma o saldo bancário inicial.
-- Os meses do gráfico e das pendências são independentes e persistem na navegação. O checklist continua exportando o mês vigente, conforme o título da área de exportação.
-- Esta atualização é somente de interface: não adiciona migrations, chaves ou configurações do Supabase. Para publicar, faça deploy do código atualizado na Vercel, mantendo as migrations anteriores em dia.
+- Transações substitui Pendências. Uma única lista rolável começa no mês atual a partir da segunda-feira da semana corrente, incluindo lançamentos pagos e pendentes. Meses anteriores/futuros mostram seu mês completo. As setas trocam o mês e a seleção mensal persiste após atualizar. A lista tem altura limitada a no máximo dez linhas, reduzida à altura disponível no celular.
+- Em Filtrar transações, pesquisar ou selecionar movimentação/categoria/status consulta todo o mês selecionado em ordem de vencimento. Status: A vencer (inclui hoje), Pagas, Atrasadas ou Todas; Semana atual em diante restaura o recorte padrão quando os outros filtros estiverem vazios. Pagas corresponde à liquidação integral ou à anotação Já pago no cartão. Pagamentos parciais continuam pendentes.
+- Total Parcial e Saldo são entradas menos saídas dos registros filtrados. Entrada soma positivamente; Saída é apresentada negativa. O cálculo usa o valor integral dos lançamentos mostrados, incluindo os pagos; valores pagos/restantes de um pagamento parcial aparecem como informação na linha. Totais são calculados em centavos. Não há contagem de lançamentos ou mês/ano abaixo do resumo. Nova transação abre o formulário unificado em Mais.
+- O resumo da semana não tem filtros: lista apenas pagamentos/recebimentos e atrasos dos últimos cinco dias. O saldo aplicado em imóveis próprios fica ao final do Início.
+- O gráfico diário e a projeção por conta foram retirados do Início. Seu mês em números apresenta despesas por categoria, cores distintas, valores e percentuais. Entradas e saídas indica déficit, sobra ou equilíbrio. Usa o valor integral de lançamentos não cancelados por vencimento, pagos e previstos; não soma saldo bancário inicial nem transferências internas. Meses do gráfico e de Transações são independentes e persistem.
+
+## Despesas no cartão e transferências retroativas
+
+- Marque Pagamento no cartão de crédito no cadastro ou edição da despesa, escolhendo Será pago no cartão ou Já pago no cartão e, opcionalmente, um cartão do responsável. Use para valores que já fazem parte de uma fatura cadastrada. É uma anotação: não cria compra/parcelamento/fatura nem movimenta saldo bancário.
+- Esses registros permanecem identificados em Transações, mas ficam fora dos totais de despesas, projeções, relatórios, gráfico mensal e checklist para não duplicar a fatura. O pagamento bancário individual fica bloqueado no servidor. Pagar a fatura continua sendo a movimentação financeira. Não é possível marcar parcelas da própria fatura ou despesas já pagas por conta bancária como anotações de crédito. Estorne primeiro um pagamento bancário indevido antes de trocar sua forma de pagamento.
+- A opção pode ser alterada com o alcance Só este lançamento ou Este e os próximos. As mesmas proteções de revisão, permissão e repetição de requisições são mantidas. Marcar Já pago no cartão registra a data da anotação para o resumo da semana; não equivale ao pagamento bancário da fatura.
+- Em Contas → Editar conta de origem → Transferir, datas anteriores e a data de hoje registram a transferência imediatamente; datas futuras são agendadas. O banco guarda a data efetiva escolhida e mantém o horário real de registro no ledger para auditoria. O saldo atual é atualizado, sem reescrever lançamentos históricos. Confirmar um agendamento vencido preserva sua data prevista como data efetiva.
+- Publicação: aplicar migrations anteriores pendentes e `015_credit_annotations_and_dated_transfers.sql`, depois publicar o frontend na Vercel. O instalador 001–015 é somente para banco novo. Nenhuma nova chave ou configuração Auth é necessária.
