@@ -5,10 +5,11 @@ export function statementDate(s:string){s=s.trim();if(/^\d{8,}/.test(s))s=s.slic
 const normal=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const installmentSuffix=/(?:\s*[-–—:|]\s*|\s+)(?:[\[(]\s*)?(?:parc(?:ela(?:mento)?)?s?\.?\s*:?\s*)?(\d{1,3})\s*(?:\/|de)\s*(\d{1,3})\s*[\])]?\s*$/i;
 const cleanDescription=(s:string)=>s.replace(installmentSuffix,'').trim()||s.trim();
+export const installmentTotal=(amount:number,count:number)=>Math.round(Math.abs(amount)*100)*count/100;
 export function makeRow(description:string,date:string,amount:number,bank_id='',type=''):StatementRow{
  const part=description.match(installmentSuffix)??description.match(/(?:parc\s*)?\b(\d{1,3})\s*\/\s*(\d{1,3})\b/i),count=part?Number(part[2]):1,installment=part?Number(part[1]):1;
  const d=normal(description+' '+type);const kind=/pagamento|payment|pgtorecebido/.test(d)?'payment':/estorno|refund/.test(d)?'refund':/juros|multa|tarifa|anuidade|fee/.test(d)||/\biof\b/i.test(description)?'fee':amount<0?'credit':'purchase';
- return {original:description,description:cleanDescription(description),amount:kind==='refund'?-Math.abs(amount):amount,date:statementDate(date),bank_id,kind,category:kind==='fee'?'Encargos':'Outros',count,installment,total_amount:count===1?Math.abs(amount):null,decision:'',match_id:'',comparison:'Necessita revisão'};
+ return {original:description,description:cleanDescription(description),amount:kind==='refund'?-Math.abs(amount):amount,date:statementDate(date),bank_id,kind,category:kind==='fee'?'Encargos':'Outros',count,installment,total_amount:installmentTotal(amount,count),decision:'',match_id:'',comparison:'Necessita revisão'};
 }
 function csvRows(text:string){const sep=text.split(/\r?\n/)[0].includes(';')?';':',';const rows:string[][]=[];let row:string[]=[],cell='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(c===sep&&!quoted){row.push(cell);cell=''}else if(c==='\n'&&!quoted){row.push(cell.replace(/\r$/,''));rows.push(row);row=[];cell=''}else cell+=c}if(cell||row.length){row.push(cell);rows.push(row)}return rows}
 export function parseStatement(text:string,format:string,referenceDate=''){const rows:StatementRow[]=[];const warnings:string[]=[];

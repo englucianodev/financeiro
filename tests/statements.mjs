@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {parseStatement,compareRow,makeRow} from '../.test-build/statements.js';
 import {dueSlots,emailText,nationalHoliday} from '../.test-build/email-notifications.js';
-let p=parseStatement('Data;Descrição;Valor\n01/11/2026;LOJA 03/10;150,00\n02/11/2026;Estorno;-10,00\n03/11/2026;Juros;2,00','csv');assert.equal(p.rows.length,3);assert.equal(p.rows[0].installment,3);assert.equal(p.rows[0].total_amount,null);assert.equal(p.rows[1].kind,'refund');assert.equal(p.rows[2].kind,'fee');
+let p=parseStatement('Data;Descrição;Valor\n01/11/2026;LOJA 03/10;150,00\n02/11/2026;Estorno;-10,00\n03/11/2026;Juros;2,00','csv');assert.equal(p.rows.length,3);assert.equal(p.rows[0].installment,3);assert.equal(p.rows[0].total_amount,1500);assert.equal(p.rows[1].kind,'refund');assert.equal(p.rows[2].kind,'fee');
 assert.equal(parseStatement('<STMTTRN><DTPOSTED>20261101<TRNAMT>-100.00<FITID>ABC<NAME>LOJA</STMTTRN>','ofx').rows[0].amount,100);
 const data={lines:[{id:'l',card_id:'c',title:'LOJA',amount:150,installment:3,charge_date:'2026-11-01',bank_transaction_id:'ABC'}]};assert.equal(compareRow({...p.rows[0],description:'OUTRA LOJA'},data,'c').comparison,'Novo lançamento');assert.equal(compareRow({...p.rows[0],bank_id:'ABC'},data,'c').comparison,'Já cadastrado');assert.equal(compareRow({...p.rows[0],bank_id:'ABC',amount:151},data,'c').comparison,'Divergente');
 assert.equal(parseStatement('01/11 LOJA 150,00','pdf').rows[0].date,'');assert.equal(parseStatement('01/11/2026 LOJA 03/10 150,00','pdf').rows[0].count,10);
@@ -33,7 +33,7 @@ const distantDash=statementPageText([item('01/11/2026',60,700),item('LOJA',100,7
 
 for(const suffix of [' - Parcela 03/10',' 03/10',' - 03 / 10',' (03/10)',' [03/10]',' – Parc. 03/10',' — PARCELA: 03 de 10',' - Parcelamento 03/10']){
  const original='LOJA CENTRAL'+suffix,row=makeRow(original,'2026-11-01',150);
- assert.equal(row.description,'LOJA CENTRAL');assert.equal(row.original,original);assert.equal(row.installment,3);assert.equal(row.count,10);assert.equal(row.total_amount,null);
+ assert.equal(row.description,'LOJA CENTRAL');assert.equal(row.original,original);assert.equal(row.installment,3);assert.equal(row.count,10);assert.equal(row.total_amount,1500);
  const existing={lines:[{...data.lines[0],title:original}]};assert.equal(compareRow(row,existing,'c').comparison,'Possível duplicidade');
 }
 assert.equal(makeRow('LOJA 03/10 CENTRO','2026-11-01',150).description,'LOJA 03/10 CENTRO');
@@ -42,3 +42,6 @@ for(const [text,format] of [['Data;Descrição;Valor\n01/11/2026;LOJA - Parcela 
  const row=parseStatement(text,format).rows[0];assert.equal(row.description,'LOJA');assert.equal(row.installment,3);assert.equal(row.count,10);
 }
 console.log('Descrições limpas em CSV/OFX/PDF com parcelas, original e duplicidades preservados OK');
+
+assert.equal(makeRow('LOJA 02/12','2026-11-01',49.99).total_amount,599.88);
+assert.equal(makeRow('LOJA 02/03','2026-11-01',0.29).total_amount,0.87);
