@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {parseStatement,compareRow} from '../.test-build/statements.js';
+import {parseStatement,compareRow,makeRow} from '../.test-build/statements.js';
 import {dueSlots,emailText,nationalHoliday} from '../.test-build/email-notifications.js';
 let p=parseStatement('Data;Descrição;Valor\n01/11/2026;LOJA 03/10;150,00\n02/11/2026;Estorno;-10,00\n03/11/2026;Juros;2,00','csv');assert.equal(p.rows.length,3);assert.equal(p.rows[0].installment,3);assert.equal(p.rows[0].total_amount,null);assert.equal(p.rows[1].kind,'refund');assert.equal(p.rows[2].kind,'fee');
 assert.equal(parseStatement('<STMTTRN><DTPOSTED>20261101<TRNAMT>-100.00<FITID>ABC<NAME>LOJA</STMTTRN>','ofx').rows[0].amount,100);
@@ -30,3 +30,15 @@ assert.equal(parseStatement('Total desta fatura 300,00','pdf').metadata.total,'3
 
 const splitSign=statementPageText([item('01/11/2026',60,700),item('Crédito',100,700),item('-',520,700),item('31,00',526,700)]);assert.equal(parseStatement(splitSign,'pdf').rows[0].amount,-31);
 const distantDash=statementPageText([item('01/11/2026',60,700),item('LOJA',100,700),item('-',160,700),item('31,00',526,700)]);assert.equal(parseStatement(distantDash,'pdf').rows[0].amount,31);
+
+for(const suffix of [' - Parcela 03/10',' 03/10',' - 03 / 10',' (03/10)',' [03/10]',' – Parc. 03/10',' — PARCELA: 03 de 10',' - Parcelamento 03/10']){
+ const original='LOJA CENTRAL'+suffix,row=makeRow(original,'2026-11-01',150);
+ assert.equal(row.description,'LOJA CENTRAL');assert.equal(row.original,original);assert.equal(row.installment,3);assert.equal(row.count,10);assert.equal(row.total_amount,null);
+ const existing={lines:[{...data.lines[0],title:original}]};assert.equal(compareRow(row,existing,'c').comparison,'Possível duplicidade');
+}
+assert.equal(makeRow('LOJA 03/10 CENTRO','2026-11-01',150).description,'LOJA 03/10 CENTRO');
+assert.equal(makeRow('LOJA SEM PARCELAS','2026-11-01',150).description,'LOJA SEM PARCELAS');
+for(const [text,format] of [['Data;Descrição;Valor\n01/11/2026;LOJA - Parcela 03/10;150,00','csv'],['01/11/2026 LOJA 03/10 150,00','pdf'],['<STMTTRN><DTPOSTED>20261101<TRNAMT>-150.00<NAME>LOJA - Parcela 03/10</STMTTRN>','ofx']]){
+ const row=parseStatement(text,format).rows[0];assert.equal(row.description,'LOJA');assert.equal(row.installment,3);assert.equal(row.count,10);
+}
+console.log('Descrições limpas em CSV/OFX/PDF com parcelas, original e duplicidades preservados OK');

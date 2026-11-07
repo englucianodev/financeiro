@@ -3,10 +3,12 @@ export type StatementRow={original:string;description:string;date:string;amount:
 export function money(text:string){let s=text.replace(/R\$|\s/g,'').replace(/[()]/g,'');if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');const n=Number(s);return Number.isFinite(n)?Math.round(n*100)/100:NaN}
 export function statementDate(s:string){s=s.trim();if(/^\d{8,}/.test(s))s=s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8);else if(/^\d{2}\/\d{2}\/\d{4}$/.test(s))s=s.split('/').reverse().join('-');if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return '';const d=new Date(s+'T12:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===s?s:''}
 const normal=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const installmentSuffix=/(?:\s*[-–—:|]\s*|\s+)(?:[\[(]\s*)?(?:parc(?:ela(?:mento)?)?s?\.?\s*:?\s*)?(\d{1,3})\s*(?:\/|de)\s*(\d{1,3})\s*[\])]?\s*$/i;
+const cleanDescription=(s:string)=>s.replace(installmentSuffix,'').trim()||s.trim();
 export function makeRow(description:string,date:string,amount:number,bank_id='',type=''):StatementRow{
- const part=description.match(/(?:parc\s*)?\b(\d{1,3})\s*\/\s*(\d{1,3})\b/i),count=part?Number(part[2]):1,installment=part?Number(part[1]):1;
+ const part=description.match(installmentSuffix)??description.match(/(?:parc\s*)?\b(\d{1,3})\s*\/\s*(\d{1,3})\b/i),count=part?Number(part[2]):1,installment=part?Number(part[1]):1;
  const d=normal(description+' '+type);const kind=/pagamento|payment|pgtorecebido/.test(d)?'payment':/estorno|refund/.test(d)?'refund':/juros|multa|tarifa|anuidade|fee/.test(d)||/\biof\b/i.test(description)?'fee':amount<0?'credit':'purchase';
- return {original:description,description,amount:kind==='refund'?-Math.abs(amount):amount,date:statementDate(date),bank_id,kind,category:kind==='fee'?'Encargos':'Outros',count,installment,total_amount:count===1?Math.abs(amount):null,decision:'',match_id:'',comparison:'Necessita revisão'};
+ return {original:description,description:cleanDescription(description),amount:kind==='refund'?-Math.abs(amount):amount,date:statementDate(date),bank_id,kind,category:kind==='fee'?'Encargos':'Outros',count,installment,total_amount:count===1?Math.abs(amount):null,decision:'',match_id:'',comparison:'Necessita revisão'};
 }
 function csvRows(text:string){const sep=text.split(/\r?\n/)[0].includes(';')?';':',';const rows:string[][]=[];let row:string[]=[],cell='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(c===sep&&!quoted){row.push(cell);cell=''}else if(c==='\n'&&!quoted){row.push(cell.replace(/\r$/,''));rows.push(row);row=[];cell=''}else cell+=c}if(cell||row.length){row.push(cell);rows.push(row)}return rows}
 export function parseStatement(text:string,format:string,referenceDate=''){const rows:StatementRow[]=[];const warnings:string[]=[];
@@ -42,7 +44,7 @@ export function parseStatement(text:string,format:string,referenceDate=''){const
 }
 export function compareRow(row:StatementRow,data:CreditData,card:string):StatementRow{
  const candidates=data.lines.filter(l=>l.card_id===card);const bank=row.bank_id?candidates.find(l=>(l as typeof l&{bank_transaction_id?:string}).bank_transaction_id===row.bank_id):undefined;
- const merchant=(s:string)=>normal(s.replace(/\b\d{1,3}\/\d{1,3}\b/g,''));
+ const merchant=(s:string)=>normal(cleanDescription(s).replace(/\b\d{1,3}\/\d{1,3}\b/g,''));
  const related=candidates.find(l=>merchant(l.title)===merchant(row.description)&&(!row.count||row.count===1||l.installment===row.installment));const refund=row.kind==='refund'||row.kind==='credit'?candidates.find(l=>l.line_type==='refund'&&Number(l.amount)===row.amount&&l.charge_date===row.date):undefined;const match=bank??related??refund;
  const invalid=!row.date||!Number.isFinite(row.amount)||row.amount===0||!row.description||row.count<row.installment||row.count>120;
  const comparison=invalid?'Necessita revisão':bank?(Number(bank.amount)===row.amount&&bank.charge_date===row.date?'Já cadastrado':'Divergente'):match?(Number(match.amount)===row.amount?'Possível duplicidade':'Divergente'):'Novo lançamento';
