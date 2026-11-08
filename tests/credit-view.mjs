@@ -8,7 +8,7 @@ let events=creditEvents(data,'2026-11-06');
 assert.equal(events.filter(e=>e.source==='cc_invoice').length,1);assert.equal(events.filter(e=>e.source==='cc_obligation').length,0);
 assert.equal(monthlyCashOutlook(bank,events,[],'2026-11-06').projected,900);
 assert.equal(monthlySummary(events,'2026-11').expense,100);assert.equal(transactionView(events,{month:'2026-11',current:'2026-11-06'}).expense,100);
-assert.equal(transactionView(events,{month:'2026-11',current:'2026-11-06'}).rows.filter(e=>e.title.startsWith('Energia')).length,1);
+assert.equal(transactionView(events,{month:'2026-11',current:'2026-11-06'}).rows.filter(e=>e.source==='cc_charge').length,0);
 assert.equal(cardLimit(data,card).used,100);
 data.lines[0].paid=40;events=creditEvents(data,'2026-11-06');assert.equal(invoiceTotals(data.invoices[0],data.lines,'2026-11-06').status,'Parcialmente paga');assert.equal(monthlyCashOutlook([{...bank[0],balance:960}],events,[],'2026-11-06').projected,900);assert.equal(cardLimit(data,card).used,60);assert.equal(monthlySummary(events,'2026-11').expense,100);
 data.lines[0].paid=100;events=creditEvents(data,'2026-11-06');assert.equal(cardLimit(data,card).used,0);assert.equal(monthlySummary(events,'2026-11').expense,100);assert.equal(invoiceTotals(data.invoices[0],data.lines,'2026-11-06').status,'Paga');
@@ -21,3 +21,26 @@ const additional={...card,id:'child',owner_id:'bruno',parent_card_id:'card'};dat
 assert.equal(cardLimit(data,card,[{card_id:'card',status:'pending',amount:20,paid_amount:5}]).used,85);
 assert.equal(monthlySummary([{...events[0],source:undefined,credit_state:'planned',amount:500}],'2026-11').expense,0);
 console.log('Crédito: consumo separado de caixa, fatura única, pagamento parcial, manual sem limite, ciclos e adicionais compartilhados OK');
+
+const consolidated=transactionView(creditEvents(data,'2026-11-06'),{month:'2026-11',current:'2026-11-06'});
+assert.equal(consolidated.rows.filter(e=>e.source==='cc_invoice').length,1);
+assert.equal(consolidated.rows.filter(e=>e.source==='cc_charge').length,0);
+assert.equal(transactionView(creditEvents(data),{month:'2026-12'}).rows.length,0);
+
+const unpaidData={...data,lines:data.lines.map(l=>({...l,paid:0}))};
+assert.equal(transactionView(creditEvents(unpaidData,'2026-11-20'),{month:'2026-11',current:'2026-11-20',status:'paid'}).rows.length,0);
+assert.equal(transactionView(creditEvents(unpaidData,'2026-11-20'),{month:'2026-11',current:'2026-11-20',status:'late'}).rows.length,1);
+assert.equal(transactionView(creditEvents(unpaidData,'2026-11-20'),{month:'2026-11',current:'2026-11-20',status:'late'}).expense,170);
+assert.equal(transactionView(creditEvents(unpaidData),{month:'2026-11',search:'Energia',category:'Casa'}).rows[0].source,'cc_invoice');
+const multi={...unpaidData,cards:[...data.cards,{...card,id:'second'}],invoices:[...data.invoices,{...data.invoices[0],id:'invoice2',card_id:'second'},{...data.invoices[0],id:'next-month',cycle:'2026-12-01',due_date:'2026-12-15'}],lines:[...unpaidData.lines,{...data.lines[0],id:'another',invoice_id:'invoice2',card_id:'second',amount:25,paid:0},{...data.lines[0],id:'future',invoice_id:'next-month',amount:30,paid:0}]};
+assert.equal(transactionView(creditEvents(multi),{month:'2026-11'}).rows.length,2);
+assert.equal(transactionView(creditEvents(multi),{month:'2026-11'}).expense,195);
+assert.equal(transactionView(creditEvents(multi),{month:'2026-12'}).rows.length,1);
+assert.equal(transactionView(creditEvents(multi),{month:'2026-12'}).expense,30);
+console.log('Consolidação: cartões/faturas separados, mês, categoria, busca e situação bancária sem dupla contagem OK');
+
+const credited={...unpaidData,lines:[{...unpaidData.lines[0],amount:-20,paid:0,line_type:'refund',installment:null}]};
+assert.equal(creditEvents(credited).find(e=>e.source==='cc_invoice').amount,-20);
+assert.equal(transactionView(creditEvents(credited),{month:'2026-11'}).rows.length,1);
+const refundedPaid={...unpaidData,lines:[{...unpaidData.lines[0],amount:100,paid:100},{...unpaidData.lines[0],id:'refund',amount:-20,paid:0,line_type:'refund',installment:null}]};
+assert.equal(creditEvents(refundedPaid).find(e=>e.source==='cc_invoice').amount,80);

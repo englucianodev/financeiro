@@ -12,7 +12,7 @@ import PaymentDialog,{type PaymentMode} from "@/components/payment-dialog";
 import type {PropertyRecord} from "@/components/properties-panel";
 import LoginPanel from "@/components/login-panel";
 import AccountsPanel from "@/components/accounts-panel";
-import {propertyEquity,monthlyCashOutlook,type CreditCard,type ViewAccount,type ViewEvent} from "@/lib/finance-view";
+import {uniqueEvents,propertyEquity,monthlyCashOutlook,type CreditCard,type ViewAccount,type ViewEvent} from "@/lib/finance-view";
 import EntryForm from "@/components/entry-form";
 import Preferences,{type Category} from "@/components/preferences";
 import TransactionActions from '@/components/transaction-actions';
@@ -65,7 +65,7 @@ function FinanceApp(){
 
 
  const allPaymentDates=useMemo(()=>({...paymentDates,...Object.fromEntries(creditData.payments.filter(p=>!p.reversed_at).sort((a,b)=>a.paid_date.localeCompare(b.paid_date)).map(p=>['cc-invoice:'+p.invoice_id,p.paid_date])),...Object.fromEntries(creditData.purchases.filter(p=>p.obligation_id).map(p=>['cc-obligation:'+p.obligation_id,p.charge_date]))}),[paymentDates,creditData]);
- const events=useMemo(()=>[...bankEvents,...creditEvents(creditData)], [bankEvents,creditData]);
+ const events=useMemo(()=>uniqueEvents([...bankEvents,...creditEvents(creditData)]), [bankEvents,creditData]);
  const activeUser=useRef<string|null>(null),loadVersion=useRef(0);
  const retryKeys=useRef(new Map<string,string>());
 
@@ -112,7 +112,7 @@ function FinanceApp(){
 
   setMembers((m.data??[]).map(x=>({...x,display_name:firstName(x.display_name)})));setAccounts((a.data??[]).map(x=>({...x,balance:Number(x.balance)})));
 
-  setEvents((e.data??[]).map(x=>({...x,amount:Number(x.amount)})));
+  setEvents(uniqueEvents((e.data??[]).map(x=>({...x,amount:Number(x.amount)}))));
 
   const propertyResult=await db.from("properties").select("*").eq("household_id",h);if(version!==loadVersion.current||activeUser.current!==u.id)return;setProperties(propertyResult.data??[]);
 

@@ -126,3 +126,7 @@ html.dark button{color:#fff}html.dark .bottom-nav button,html.dark .more-menu bu
 .category-select span{overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 .category-select:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+
+.invoice-details { flex-basis:100%; width:100%; padding:1rem; border-top:1px solid var(--line); }
+.movement-row:has(.invoice-details) { flex-wrap:wrap; }
+.transaction-actions nav[hidden] { display:none; }

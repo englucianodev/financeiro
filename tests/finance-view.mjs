@@ -28,3 +28,11 @@ assert.deepEqual(dailyMovements(rows,flows,'2026-11-05'),[{date:'2026-11-05',inc
 assert.deepEqual(['Zebra','Água','Energia'].sort(alphabetic),['Água','Energia','Zebra']);console.log('Checklist mensal, categorias e barras diárias com déficit e sem dupla contagem de transferências OK');
 
 assert.deepEqual(transactionView(transactionRows,{month:'2026-11',current:'2026-11-05'}),allTransactions);
+
+const {recentMovements,uniqueEvents}=await import('../.test-build/finance-view.js');
+const annotated={...make('equatorial','Equatorial AP201','2026-11-06'),credit_state:'paid',credit_paid_date:'2026-11-06'};
+const future={...annotated,id:'next-occurrence',due_date:'2026-12-06'};
+const distinct={...annotated,id:'legitimate-installment'};
+assert.deepEqual(recentMovements([annotated,annotated,future,distinct],{},'2026-11-08').map(e=>e.id),['equatorial','legitimate-installment']);
+assert.equal(uniqueEvents([annotated,annotated,distinct]).length,2);
+console.log('Resumo semanal: identidade única, futuro anotado excluído, parcelas legítimas preservadas OK');

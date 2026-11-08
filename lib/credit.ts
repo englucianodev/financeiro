@@ -3,7 +3,7 @@ import {type ViewEvent,monthlySummary} from './finance-view';
 export type Card={id:string;name:string;owner_id:string;account_id:string;closing_day:number;due_day:number;issuer:string;brand:string;last_four:string;credit_limit:number;automatic_debit:boolean;color:string;card_status:'active'|'blocked'|'archived';parent_card_id:string|null;module_version:number;revision:number};
 export type Invoice={id:string;card_id:string;cycle:string;closing_date:string;due_date:string;revision:number};
 export type Obligation={id:string;card_id:string;responsible_id:string;title:string;category:string;amount:number;due_date:string;mode:'automatic'|'manual';state:'pending'|'posted'|'cancelled';recurrence_id:string|null;revision:number;generation_error?:string};
-export type Purchase={id:string;card_id:string;responsible_id:string;title:string;category:string;amount:number;charge_date:string;installments:number;next_installment:number;obligation_id:string|null};
+export type Purchase={id:string;card_id:string;responsible_id:string;title:string;category:string;amount:number;charge_date:string;installments:number;next_installment:number;obligation_id:string|null;revision?:number};
 export type Line={id:string;invoice_id:string;card_id:string;purchase_id:string|null;responsible_id:string;title:string;category:string;amount:number;paid:number;line_type:'principal'|'fee'|'refund'|'discount'|'credit'|'adjustment';installment:number|null;charge_date:string};
 export type CardPayment={id:string;invoice_id:string;account_id:string;amount:number;paid_date:string;reversed_at:string|null};
 export type Recurrence={id:string;card_id:string;responsible_id:string;title:string;category:string;amount:number;mode:'automatic'|'manual';variable:boolean;unit:'days'|'months';every:number;start_date:string;end_date:string|null;state:'active'|'paused'|'ended';revision:number};
@@ -31,8 +31,8 @@ export function creditEvents(data:CreditData,current=today()):ViewEvent[]{
  const rows:ViewEvent[]=[];
  for(const invoice of data.invoices){
   const card=data.cards.find(c=>c.id===invoice.card_id);if(!card)continue;const t=invoiceTotals(invoice,data.lines,current);
-  if(t.total<=0&&t.paid===0)continue;
-  rows.push({id:'cc-invoice:'+invoice.id,source:'cc_invoice',source_id:invoice.id,card_id:card.id,card_owner_id:card.owner_id,title:card.name+' · Fatura '+invoice.cycle.slice(0,7).split('-').reverse().join('/'),category:'Fatura de cartão',kind:'expense',amount:Math.max(t.total,t.paid),paid_amount:t.paid,due_date:invoice.due_date,account_id:card.account_id,owner_id:card.owner_id,status:t.balance<=0?'settled':'pending',edit_version:invoice.revision});
+  if(t.total===0&&t.paid===0)continue;
+  rows.push({id:'cc-invoice:'+invoice.id,source:'cc_invoice',source_id:invoice.id,card_id:card.id,card_owner_id:card.owner_id,title:card.name+' · Fatura '+invoice.cycle.slice(0,7).split('-').reverse().join('/'),category:'Fatura de cartão',kind:'expense',amount:t.total,paid_amount:t.paid,due_date:invoice.due_date,account_id:card.account_id,owner_id:card.owner_id,status:t.balance<=0?'settled':'pending',edit_version:invoice.revision});
   if(invoice.closing_date>=current)rows.push({id:'cc-closing:'+invoice.id,source:'cc_closing',source_id:invoice.id,title:'Fechamento · '+card.name,category:'Fechamento',kind:'expense',amount:0,paid_amount:0,due_date:invoice.closing_date,account_id:card.account_id,owner_id:card.owner_id,status:'pending',card_id:card.id});
  }
  for(const ob of data.obligations){
@@ -45,10 +45,10 @@ export function creditEvents(data:CreditData,current=today()):ViewEvent[]{
   rows.push({id:'cc-obligation:'+ob.id,source:'cc_obligation',source_id:ob.id,title:ob.title,category:ob.category,kind:'expense',amount:Number(ob.amount),paid_amount:0,due_date:ob.due_date,projection_due:estimatedDue(ob.due_date,root),account_id:root.account_id,owner_id:ob.responsible_id,card_owner_id:card.owner_id,card_id:card.id,card_mode:ob.mode,status:ob.state==='cancelled'?'cancelled':'pending',edit_version:ob.revision,linked_purchase_id:purchase?.id,generation_error:ob.generation_error});
  }
  for(const line of data.lines){
-  if(line.line_type==='credit')continue;const invoice=data.invoices.find(i=>i.id===line.invoice_id),card=data.cards.find(c=>c.id===line.card_id);if(!invoice||!card)continue;
+  if(line.line_type==='credit'||(line.line_type==='principal'&&line.installment===null&&Number(line.amount)===0))continue;const invoice=data.invoices.find(i=>i.id===line.invoice_id),card=data.cards.find(c=>c.id===line.card_id);if(!invoice||!card)continue;
   const purchase=data.purchases.find(p=>p.id===line.purchase_id);
   // Posted charges replace the pending obligation in the general list; history stays linked.
-  rows.push({id:'cc-line:'+line.id,source:'cc_charge',source_id:line.id,title:line.title+(line.installment&&purchase?' ('+line.installment+'/'+purchase.installments+')':''),category:line.category,kind:'expense',amount:Number(line.amount),paid_amount:Number(line.paid),due_date:invoice.due_date,account_id:rootCard(data.cards,card).account_id,owner_id:line.responsible_id,card_owner_id:card.owner_id,card_id:card.id,status:'settled',linked_purchase_id:line.purchase_id??undefined,hidden_transaction:false,card_mode:data.obligations.find(o=>o.id===purchase?.obligation_id)?.mode});
+  rows.push({id:'cc-line:'+line.id,source:'cc_charge',source_id:line.id,invoice_id:invoice.id,charge_date:line.charge_date,installment:line.installment,installments:purchase?.installments,title:line.title+(line.installment&&purchase?' ('+line.installment+'/'+purchase.installments+')':''),category:line.category,kind:'expense',amount:Number(line.amount),paid_amount:Number(line.paid),due_date:invoice.due_date,account_id:rootCard(data.cards,card).account_id,owner_id:line.responsible_id,card_owner_id:card.owner_id,card_id:card.id,status:'settled',linked_purchase_id:line.purchase_id??undefined,hidden_transaction:false,card_mode:data.obligations.find(o=>o.id===purchase?.obligation_id)?.mode});
  }
  return rows;
 }

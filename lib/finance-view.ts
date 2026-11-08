@@ -1,17 +1,33 @@
 import {brl,today,project,transferFlows,type ScheduledTransfer} from './money';
-export type ViewEvent={source?:'cc_invoice'|'cc_obligation'|'cc_charge'|'cc_closing';source_id?:string;projection_due?:string;card_owner_id?:string;card_mode?:'manual'|'automatic';linked_purchase_id?:string;hidden_transaction?:boolean;generation_error?:string;id:string;title:string;amount:number;paid_amount:number;category?:string;due_date:string;account_id:string;owner_id:string;status:string;kind:'income'|'expense';card_id?:string;settled_at?:string;auto_receipt_suppressed?:boolean;property_id?:string|null;series_id?:string|null;edit_version?:number;is_property_installment?:boolean;credit_state?:'none'|'planned'|'paid';payment_card_id?:string|null;credit_paid_date?:string|null};
+export type ViewEvent={source?:'cc_invoice'|'cc_obligation'|'cc_charge'|'cc_closing';source_id?:string;invoice_id?:string;charge_date?:string;installment?:number|null;installments?:number;projection_due?:string;card_owner_id?:string;card_mode?:'manual'|'automatic';linked_purchase_id?:string;hidden_transaction?:boolean;generation_error?:string;id:string;title:string;amount:number;paid_amount:number;category?:string;due_date:string;account_id:string;owner_id:string;status:string;kind:'income'|'expense';card_id?:string;settled_at?:string;auto_receipt_suppressed?:boolean;property_id?:string|null;series_id?:string|null;edit_version?:number;is_property_installment?:boolean;credit_state?:'none'|'planned'|'paid';payment_card_id?:string|null;credit_paid_date?:string|null};
 export type CreditCard={id:string;name:string;owner_id:string};
 export const cashDate=(event:{due_date:string;projection_due?:string})=>event.projection_due??event.due_date;
 export const isCashEvent=(event:{source?:string;status?:string;credit_state?:string})=>event.source==='cc_obligation'?event.status==='pending':event.source==='cc_charge'||event.source==='cc_closing'?false:!event.credit_state||event.credit_state==='none';
 export const isConsumptionEvent=(event:{source?:string;status?:string;credit_state?:string})=>event.source==='cc_charge'||(event.source==='cc_obligation'?event.status==='pending':event.source==='cc_invoice'||event.source==='cc_closing'?false:!event.credit_state||event.credit_state==='none');
 export const eventIsPaid=(event:ViewEvent)=>event.status==='settled'||event.credit_state==='paid';
+/** Identity, never title/value: distinct recurring occurrences remain distinct. */
+export function uniqueEvents(events:ViewEvent[]){return Array.from(new Map(events.map(e=>[e.id,e])).values())}
+export const movementDate=(e:ViewEvent,paymentDates:Record<string,string>)=>eventIsPaid(e)?e.credit_paid_date??paymentDates[e.id]??(e.settled_at?new Intl.DateTimeFormat('en-CA',{timeZone:'America/Fortaleza'}).format(new Date(e.settled_at)):e.due_date):e.due_date;
+export function recentMovements(events:ViewEvent[],paymentDates:Record<string,string>,current=today()){
+ const first=shiftDate(current,-4);
+ return uniqueEvents(events).filter(e=>!e.hidden_transaction&&!['cc_charge','cc_closing'].includes(e.source??'')&&e.status!=='cancelled')
+  // Bulk legacy credit annotations stamp the same registration date onto future occurrences.
+  .filter(e=>!(e.credit_state==='paid'&&e.due_date>current))
+  .filter(e=>{const date=movementDate(e,paymentDates);return (eventIsPaid(e)||e.due_date<current)&&date>=first&&date<=current});
+}
 export function weekStart(current:string){const date=new Date(current+'T12:00:00Z');return shiftDate(current,-((date.getUTCDay()+6)%7))}
 export function transactionView(events:ViewEvent[],{month,current=today(),search='',kind='',category='',status='all'}:{month:string;current?:string;search?:string;kind?:string;category?:string;status?:string}){
  const filtered=Boolean(search||kind||category||status!=='week');
- const selected=events.filter(e=>e.source!=='cc_closing'&&e.status!=='cancelled'&&e.due_date.startsWith(month)&&(!search||(e.title+' '+(e.category??'')).toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')))&&(!kind||e.kind===kind)&&(!category||e.category===category))
-  .filter(e=>status==='paid'?eventIsPaid(e):status==='late'?!eventIsPaid(e)&&e.due_date<current:status==='upcoming'?!eventIsPaid(e)&&e.due_date>=current:true)
+ const all=uniqueEvents(events);
+ const stateFor=(e:ViewEvent)=>e.source==='cc_charge'?(all.find(i=>i.source==='cc_invoice'&&i.source_id===e.invoice_id)??e):e;
+ const selected=all.filter(e=>e.source!=='cc_closing'&&e.status!=='cancelled'&&e.due_date.startsWith(month)&&(!search||(e.title+' '+(e.category??'')+' '+(e.source==='cc_charge'?stateFor(e).title:'')).toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')))&&(!kind||e.kind===kind)&&(!category||e.category===category))
+  .filter(e=>{const state=stateFor(e);return status==='paid'?eventIsPaid(state):status==='late'?!eventIsPaid(state)&&e.due_date<current:status==='upcoming'?!eventIsPaid(state)&&e.due_date>=current:true})
   .filter(e=>filtered||month!==current.slice(0,7)||e.due_date>=weekStart(current)).sort((a,b)=>a.due_date.localeCompare(b.due_date)||alphabetic(a.title,b.title));
- const rows=selected.filter(e=>!e.hidden_transaction);
+ // Filter consumption before consolidation so category/search totals retain their meaning.
+ const invoiceIds=new Set(selected.filter(e=>e.source==='cc_charge').map(e=>e.invoice_id));
+ const rows=selected.filter(e=>!e.hidden_transaction&&e.source!=='cc_charge');
+ for(const invoice of uniqueEvents(events).filter(e=>e.source==='cc_invoice'&&invoiceIds.has(e.source_id))){if(!rows.some(e=>e.id===invoice.id))rows.push(invoice)}
+ rows.sort((a,b)=>a.due_date.localeCompare(b.due_date)||alphabetic(a.title,b.title));
  const cents=selected.filter(isConsumptionEvent).reduce((sum,e)=>{sum[e.kind]+=Math.round(Number(e.amount)*100);return sum},{income:0,expense:0});
  return {rows,income:cents.income/100,expense:cents.expense/100,balance:(cents.income-cents.expense)/100};
 }

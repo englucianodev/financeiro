@@ -18,7 +18,7 @@ try{
  const balancesBefore=(await db.query('select id,balance from financial_accounts order by id')).rows;
  await db.exec(await readFile('supabase/credit_diagnostic_before.sql','utf8'));
  await db.exec(await readFile('supabase/migrations/019_credit_module.sql','utf8'));
- await db.exec(await readFile('supabase/migrations/020_statement_imports.sql','utf8'));await db.exec(await readFile('supabase/migrations/021_email_notifications.sql','utf8'));await db.exec(await readFile('supabase/migrations/022_pdf_passwords_and_refunds.sql','utf8'));
+ await db.exec(await readFile('supabase/migrations/020_statement_imports.sql','utf8'));await db.exec(await readFile('supabase/migrations/021_email_notifications.sql','utf8'));await db.exec(await readFile('supabase/migrations/022_pdf_passwords_and_refunds.sql','utf8'));await db.exec(await readFile('supabase/migrations/023_purchase_corrections.sql','utf8'));
  assert.deepEqual((await db.query('select id,balance from financial_accounts order by id')).rows,balancesBefore);
  const after=(await db.query('select * from credit_cards where id=$1',[legacy])).rows[0];for(const key of Object.keys(legacyRow))assert.deepEqual(after[key],legacyRow[key]);
  await db.exec('grant select,insert,update,delete on all tables in schema public to authenticated;grant usage,select on all sequences in schema public to authenticated');await as(users[0]);
@@ -86,5 +86,40 @@ try{
  await as(users[2]);await assert.rejects(()=>adjust(100));await assert.rejects(()=>scalar('select save_notification_settings($1,$2::jsonb) as value',[h,'{}']));
  console.log('Importação/ajustes: repetição, conciliação, rollback transacional, saldo preservado, configuração de notificações e isolamento OK');
  await as(users[0]);const refundRequest={card_id:cardA,purchase_id:pid,amount:10,date:'2024-01-03',description:'Estorno novo validado'},refundKey=randomUUID(),beforeRefundBank=await balance();await action('card_refund',refundRequest,refundKey);await action('card_refund',refundRequest,refundKey);assert.equal(await balance(),beforeRefundBank);await assert.rejects(()=>action('card_refund',refundRequest));await assert.rejects(()=>action('card_refund',{...refundRequest,amount:99999}));await assert.rejects(async()=>action('import_statement',{...importData,file_hash:'e'.repeat(64),revision:Number(await scalar('select revision as value from cc_invoices where id=$1',[currentInvoice.id])),rows:[{...importData.rows[0],kind:'refund',amount:-10,date:'2024-01-03',description:refundRequest.description}]}));assert.equal(await scalar('select count(*)::int as value from card_pdf_passwords'),0);await as(users[2]);await assert.rejects(()=>action('card_refund',refundRequest));
+
+ // Correct purchases in place: sequence, conversion, import IDs, rollback and paid protection.
+ await as(users[0]);
+ const editCard=(await action('save_card',save('Correções',users[0],accounts[0],{credit_limit:50000}))).card_id;
+ const editPurchase=(await action('purchase',{card_id:editCard,responsible_id:users[0],title:'Corrigir',category:'Casa',amount:1000,date:'2024-01-01',installments:10,next_installment:3,first_cycle:'2028-01-01'}));
+ const editPid=await scalar("select id as value from cc_purchases where card_id=$1",[editCard]);
+ const linesFor=async()=> (await db.query("select * from cc_lines where purchase_id=$1 and line_type='principal' and installment is not null order by installment",[editPid])).rows;
+ const originalLines=await linesFor(),bankBeforeEdit=await balance();
+ const editPayload=async(extra={})=>({purchase_id:editPid,revision:Number(await scalar('select revision as value from cc_purchases where id=$1',[editPid])),invoice_revisions:Object.fromEntries((await db.query('select id,revision from cc_invoices')).rows.map(i=>[i.id,Number(i.revision)])),card_id:editCard,title:'Corrigida',category:'Mercado',amount:1000,date:'2024-01-02',installments:10,next_installment:2,first_cycle:'2028-02-01',confirm_reconciled:true,...extra});
+ const correction=await editPayload(),correctionKey=randomUUID();await action('edit_purchase',correction,correctionKey);await action('edit_purchase',correction,correctionKey);
+ let edited=await linesFor();assert.equal(edited.length,9);assert.equal(edited[0].installment,2);assert.equal(edited[0].id,originalLines[0].id);assert.equal(await balance(),bankBeforeEdit);
+ await assert.rejects(()=>action('edit_purchase',correction),/atualizada/);
+ await action('edit_purchase',await editPayload({next_installment:4}));edited=await linesFor();assert.equal(edited.length,7);assert.equal(edited[0].installment,4);
+ await action('edit_purchase',await editPayload({installments:1,next_installment:1,amount:300}));edited=await linesFor();assert.equal(edited.length,1);assert.equal(Number(edited[0].amount),300);
+ await action('edit_purchase',await editPayload({installments:3,next_installment:1,amount:100}));edited=await linesFor();assert.deepEqual(edited.map(l=>Number(l.amount)),[33.33,33.33,33.34]);
+ const beforeInvalid=await linesFor();await assert.rejects(()=>editPayload({amount:999999}).then(p=>action('edit_purchase',p)),/Limite/);assert.deepEqual(await linesFor(),beforeInvalid);
+ await assert.rejects(()=>editPayload({first_cycle:'2024-03-01',confirm_reconciled:false}).then(p=>action('edit_purchase',p)),/Confirme/);
+ // Simulate an imported purchase: the import references a stable physical line ID.
+ await db.exec('reset role');await db.query("update cc_lines set bank_transaction_id='stable-import' where id=$1",[edited[0].id]);await as(users[0]);
+ await action('edit_purchase',await editPayload({installments:3,next_installment:2,amount:100}));
+ assert.equal(await scalar("select id as value from cc_lines where bank_transaction_id='stable-import'"),edited[0].id);
+
+ // Refund remains attached, and moving the purchase cannot detach that credit.
+ await action('card_refund',{card_id:editCard,purchase_id:editPid,amount:5,date:'2024-01-03',description:'Estorno preservado'});
+ const refundBefore=(await db.query("select * from cc_lines where purchase_id=$1 and line_type='refund'",[editPid])).rows;
+ await action('edit_purchase',await editPayload({installments:3,next_installment:2,amount:120}));
+ assert.deepEqual((await db.query("select * from cc_lines where purchase_id=$1 and line_type='refund'",[editPid])).rows,refundBefore);
+ await assert.rejects(()=>editPayload({installments:3,next_installment:2,amount:120,card_id:cardA}).then(p=>action('edit_purchase',p)),/estorno/);
+ await action('edit_purchase',await editPayload({installments:3,next_installment:2,amount:100}));
+ const paidLine=(await linesFor())[0];await action('pay_invoice',{invoice_id:paidLine.invoice_id,revision:Number(await scalar('select revision as value from cc_invoices where id=$1',[paidLine.invoice_id])),account_id:accounts[0],amount:10,date:now});
+ await assert.rejects(()=>editPayload({amount:200}).then(p=>action('edit_purchase',p)),/pagamento/);
+ await action('edit_purchase',await editPayload({installments:3,next_installment:2,amount:100,title:'Descrição corrigida',date:'2024-01-02'}));
+ await as(users[2]);await assert.rejects(()=>editPayload().then(p=>action('edit_purchase',p)),/permissão/);await as(users[0]);
+ assert.equal(await scalar("select has_function_privilege('authenticated','public.cc_action_v22(uuid,uuid,text,jsonb)','execute') as value"),false);
+ console.log('Correções: conversões, 3/10→2/10→4/10, centavos, IDs importados, revisões, confirmação, limite, pagamentos, idempotência e isolamento OK');
  console.log('Crédito local: múltiplos titulares/contas, ciclo/bissexto, 5/12, centavos, limite, pagamentos parciais/integrais/reversão, encargos, estorno/crédito, antecipação, manual/automático, recorrência, adicionais, RLS e preservação histórica OK');
 }finally{await db.close()}
