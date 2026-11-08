@@ -11,6 +11,7 @@
     "test:db": "node tests/database.mjs",
     "test:e2e": "playwright test",
     "test:credit": "node tests/credit-database.mjs",
+    "test:imports": "node tests/import-lifecycle.mjs",
     "prebuild": "node scripts/prepare-readers.mjs",
     "predev": "node scripts/prepare-readers.mjs",
     "test:password": "tsc app/api/statements/unlock/route.ts lib/pdf-password.ts --outDir .test-build/password --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck --esModuleInterop && node tests/pdf-password.mjs"

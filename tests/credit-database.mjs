@@ -18,7 +18,7 @@ try{
  const balancesBefore=(await db.query('select id,balance from financial_accounts order by id')).rows;
  await db.exec(await readFile('supabase/credit_diagnostic_before.sql','utf8'));
  await db.exec(await readFile('supabase/migrations/019_credit_module.sql','utf8'));
- await db.exec(await readFile('supabase/migrations/020_statement_imports.sql','utf8'));await db.exec(await readFile('supabase/migrations/021_email_notifications.sql','utf8'));await db.exec(await readFile('supabase/migrations/022_pdf_passwords_and_refunds.sql','utf8'));await db.exec(await readFile('supabase/migrations/023_purchase_corrections.sql','utf8'));
+ await db.exec(await readFile('supabase/migrations/020_statement_imports.sql','utf8'));await db.exec(await readFile('supabase/migrations/021_email_notifications.sql','utf8'));await db.exec(await readFile('supabase/migrations/022_pdf_passwords_and_refunds.sql','utf8'));await db.exec(await readFile('supabase/migrations/023_purchase_corrections.sql','utf8'));await db.exec(await readFile('supabase/migrations/024_import_lifecycle.sql','utf8'));
  assert.deepEqual((await db.query('select id,balance from financial_accounts order by id')).rows,balancesBefore);
  const after=(await db.query('select * from credit_cards where id=$1',[legacy])).rows[0];for(const key of Object.keys(legacyRow))assert.deepEqual(after[key],legacyRow[key]);
  await db.exec('grant select,insert,update,delete on all tables in schema public to authenticated;grant usage,select on all sequences in schema public to authenticated');await as(users[0]);

@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {createHash} from 'node:crypto';
 const ana='11111111-1111-4111-8111-111111111111',bruno='22222222-2222-4222-8222-222222222222',house='33333333-3333-4333-8333-333333333333';
 const date=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Fortaleza'}).format(new Date()),month=()=>date().slice(0,7);
 const accounts=[{id:'a',name:'Banco Ana',owner_id:ana,balance:1000,is_primary:true,account_type:'checking'},{id:'b',name:'Banco Bruno',owner_id:bruno,balance:2000,is_primary:true,account_type:'checking'}];
@@ -27,6 +28,12 @@ async function seed(page,state=fixture(),{missing=false}={}){
    if(action==='edit_purchase'){
     const purchase=state.cc_purchases.find(p=>p.id===d.purchase_id);Object.assign(purchase,{title:d.title,category:d.category,amount:d.amount,charge_date:d.date,card_id:d.card_id,installments:d.installments,next_installment:d.next_installment,revision:(purchase.revision??0)+1});
     if(d.installments===1){for(const line of state.cc_lines.filter(l=>l.purchase_id===purchase.id&&l.line_type==='principal'))Object.assign(line,{title:d.title,category:d.category,amount:d.amount,charge_date:d.date,card_id:d.card_id});state.cc_invoices[0].revision++}
+   }
+   if(action==='preview_undo_import'){
+    const imp=state.cc_imports.find(i=>i.id===d.import_id);result={import_id:imp.id,safe:imp.provenance_version===1,reasons:imp.provenance_version===1?[]:['Importação antiga sem identificação confiável: revisão individual obrigatória'],created_lines:imp.provenance_version===1?1:0,created_purchases:imp.provenance_version===1?1:0,linked_lines:1,invoice_ids:['inv'],bank_delta:0};
+   }
+   if(action==='undo_import'){
+    state.cc_imports.find(i=>i.id===d.import_id).status='undone';state.cc_lines=state.cc_lines.filter(l=>l.id!=='line');state.cc_purchases=state.cc_purchases.filter(p=>p.id!=='purchase');state.cc_invoices[0].revision++;
    }
    if(action==='pay_invoice'){state.cc_lines[0].paid+=d.amount;state.cc_invoices[0].revision++;state.financial_accounts[0].balance-=d.amount;state.cc_payments.push({id:key,invoice_id:'inv',account_id:d.account_id,amount:d.amount,paid_date:d.date,reversed_at:null})}
    if(action==='undo_payment'){const payment=state.cc_payments.find(p=>p.id===d.payment_id);state.cc_lines[0].paid-=payment.amount;state.cc_invoices[0].revision++;state.financial_accounts[0].balance+=payment.amount;payment.reversed_at='2026-11-06T12:00:00Z'}
@@ -145,4 +152,21 @@ test('importação suspeita exige confirmação adicional antes de gravar',async
  await d.getByLabel('Arquivo da fatura').setInputFiles({name:'suspeito.csv',mimeType:'text/csv',buffer:Buffer.from('Data;Descrição;Valor\n01/11/2026;Mercado;100,00')});await expect(d.locator('fieldset')).toContainText('Possível duplicidade');
  await d.getByLabel('Decisão explícita').selectOption('new');await d.getByRole('checkbox',{name:/Conferi competência/}).check();page.once('dialog',dialog=>dialog.dismiss());await d.getByRole('button',{name:'Confirmar importação'}).click();await expect(d).toBeVisible();
  page.once('dialog',dialog=>dialog.accept());const request=page.waitForRequest(r=>r.url().endsWith('/cc_action'));await d.getByRole('button',{name:'Confirmar importação'}).click();expect((await request).postDataJSON().p_action).toBe('import_statement');
+});
+
+test('histórico mostra metadados, revisa legado e desfaz somente o lote com reimportação',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const state=fixture(),csv=Buffer.from('Data;Descrição;Valor\n01/11/2026;Mercado;100,00');
+ state.cc_lines.push({...state.cc_lines[0],id:'manual-line',purchase_id:null,title:'Manual preservada',amount:25});
+ state.cc_imports=[{id:'import-a',card_id:'c1',invoice_id:'inv',file_name:'fatura.csv',file_hash:createHash('sha256').update(csv).digest('hex'),created_at:'2026-11-01T12:00:00Z',status:'active',provenance_version:1,summary:{identified:2,imported:1,linked:1,total:100}},{id:'legacy',card_id:'c1',invoice_id:'inv',file_name:'antiga.pdf',created_at:'2026-10-01T12:00:00Z',status:'active',provenance_version:0,summary:{identified:1,imported:1}}];
+ await seed(page,state);await openCards(page);await page.getByRole('button',{name:'Recorrências e histórico'}).click();const history=page.getByRole('region',{name:'Histórico de importações',exact:true});
+ await expect(history).toContainText('Nubank');await expect(history).toContainText('novembro de 2026');await expect(history).toContainText('01/11/2026');await expect(history).toContainText('R$ 100,00');
+ await history.locator('article').filter({hasText:'antiga.pdf'}).getByRole('button',{name:'Desfazer importação'}).click();await expect(history).toContainText('revisão individual obrigatória');await expect(history.getByRole('button',{name:'Confirmar desfazimento integral'})).toHaveCount(0);await history.getByRole('button',{name:'Cancelar desfazimento'}).click();
+ await history.locator('article').filter({hasText:'fatura.csv'}).getByRole('button',{name:'Desfazer importação'}).click();await expect(history).toContainText('1 registros preexistentes vinculados serão preservados');
+ page.once('dialog',d=>d.accept());const undo=page.waitForRequest(r=>r.url().endsWith('/cc_action')&&r.postDataJSON()?.p_action==='undo_import');await history.getByRole('button',{name:'Confirmar desfazimento integral'}).click();expect((await undo).postDataJSON().p_data).toEqual({import_id:'import-a',confirmed:true});await expect(history.locator('article').filter({hasText:'fatura.csv'})).toContainText('Desfeita');expect(state.cc_lines.map(l=>l.id)).toEqual(['manual-line']);expect(state.financial_accounts[0].balance).toBe(1000);
+ await page.getByRole('button',{name:'Importar fatura / Ajustar valor da fatura'}).click();const d=page.getByRole('dialog',{name:'Importar e ajustar fatura'});await d.getByLabel('Arquivo da fatura').setInputFiles({name:'fatura.csv',mimeType:'text/csv',buffer:csv});await expect(d.locator('fieldset')).toHaveCount(1);await expect(d.getByText('Este arquivo já foi importado.',{exact:false})).toHaveCount(0);await d.getByLabel('Decisão explícita').selectOption('new');await d.getByRole('checkbox',{name:/Conferi competência/}).check();const imported=page.waitForRequest(r=>r.url().endsWith('/cc_action')&&r.postDataJSON()?.p_action==='import_statement');await d.getByRole('button',{name:'Confirmar importação'}).click();expect((await imported).postDataJSON().p_id).not.toBe('import-a');
+});
+test('mover compra importada mostra origem e destino, permite ano/mês e confirma parcelas',async({page})=>{
+ const state=fixture();Object.assign(state.cc_purchases[0],{installments:10,next_installment:3,amount:1500});Object.assign(state.cc_lines[0],{installment:3,amount:150});await seed(page,state);await page.getByRole('tab',{name:'Transações',exact:true}).click();await page.getByRole('button',{name:'Detalhes da fatura'}).click();await page.locator('.invoice-details').getByRole('button',{name:'Editar compra'}).click();const d=page.getByRole('dialog',{name:'Editar compra no cartão'});
+ await d.getByLabel('Quantidade total de parcelas',{exact:true}).fill('12');await expect(d.getByLabel('Número da primeira parcela restante')).toHaveValue('3');await d.getByLabel('Quantidade total de parcelas',{exact:true}).fill('2');await expect(d.getByLabel('Número da primeira parcela restante')).toHaveValue('3');await d.getByLabel('Quantidade total de parcelas',{exact:true}).fill('12');await d.getByLabel('Número da primeira parcela restante').fill('4');await d.getByLabel('Fatura de referência').fill('2027-02');await expect(d).toContainText('Período de origem:');await expect(d).toContainText('fevereiro de 2027');await expect(d).toContainText('origem e destino');await d.getByRole('checkbox',{name:/Confirmo a movimentação/}).check();
+ const request=page.waitForRequest(r=>r.url().endsWith('/cc_action')&&r.postDataJSON()?.p_action==='edit_purchase');await d.getByRole('button',{name:'Salvar compra'}).click();expect((await request).postDataJSON().p_data).toMatchObject({first_cycle:'2027-02-01',installments:12,next_installment:4,confirm_reconciled:true});await expect(d).toBeHidden();
 });

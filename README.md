@@ -169,3 +169,7 @@ Arquitetura: `docs/CARTOES_ARQUITETURA.md`. Evidências/limites: `docs/CARTOES_T
 ## Importação de faturas, ajustes e e-mails (020–021)
 
 Instruções, configuração manual do Resend/agendador, arquivos e limitações: `docs/IMPORTACOES_NOTIFICACOES.md`. PDF textual, OCR local em português, CSV e OFX têm conferência obrigatória antes da gravação. Ajustes são compensatórios e auditáveis. Lançamentos efetivados no cartão aparecem em Transações por vencimento da fatura, substituindo a obrigação manual anterior na lista. E-mails permanecem desabilitados até a configuração e ativação explícitas.
+
+## Histórico e desfazimento de importações (migration 024)
+
+Conversão à vista/parcelada, correção de sequência e movimentação entre meses/anos preservam os vínculos e atualizam as faturas. O histórico inclui uma prévia de desfazimento por UUID, com bloqueio de pagamentos, edições, conciliações e dependências posteriores. Importações antigas sem origem comprovada exigem revisão, sem exclusão por aproximação. Instruções: [Importações — ciclo de vida](docs/IMPORTACOES_CICLO_DE_VIDA.md). Teste específico: `npm run test:imports`. Aplicar a migration 024 após 001–023; nenhuma variável nova.

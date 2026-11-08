@@ -49,7 +49,7 @@ Fontes oficiais consultadas: [Supabase Cron](https://supabase.com/docs/guides/cr
 Execute cada consulta separadamente após as migrations:
 
 ```sql
-select card_id,file_hash,count(*) from cc_imports group by 1,2 having count(*)>1;
+select card_id,file_hash,count(*) from cc_imports where status='active' group by 1,2 having count(*)>1;
 select card_id,bank_transaction_id,count(*) from cc_lines where bank_transaction_id is not null group by 1,2 having count(*)>1;
 select household_id,user_id,local_date,slot,count(*) from notification_deliveries group by 1,2,3,4 having count(*)>1;
 select a.id,a.balance,coalesce(sum(l.amount),0) ledger from financial_accounts a left join account_ledger l on l.account_id=a.id group by a.id having a.balance<>coalesce(sum(l.amount),0);
@@ -71,3 +71,8 @@ Alterados: módulo de cartões, preferências, tipos e visualização de crédit
 - Na rodada completa do navegador, 60 cenários passaram; o OCR ainda carregava os recursos anteriores e falhou. Após a correção de idioma descompactado/motor estável, o reteste oficial --last-failed passou. PDF textual e digitalizado também passaram em testes isolados no celular.
 - Três testes adicionais passaram: CSV bloqueado até a conferência final, prévia/confirmação de ajuste e padrões de notificações.
 - Testes de banco confirmam rollback total, repetição idempotente, mesmo arquivo rejeitado, importação a partir de 3/10, estorno/tarifa, conciliação do complemento, saldo preservado e bloqueio de outro grupo. Envio Resend e instalação do cron remoto não foram executados.
+
+
+## Atualização 024 — histórico e desfazimento
+
+O ciclo de vida das importações está documentado em [IMPORTACOES_CICLO_DE_VIDA.md](IMPORTACOES_CICLO_DE_VIDA.md). A consulta de duplicidade de arquivos acima usa `status` e exige a migration 024: importações desfeitas são preservadas no histórico e podem compartilhar hash com uma nova importação ativa.

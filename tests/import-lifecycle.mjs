@@ -1,0 +1,100 @@
+import {PGlite} from '@electric-sql/pglite';
+import {pgcrypto} from '@electric-sql/pglite/contrib/pgcrypto';
+import {readFile,readdir} from 'node:fs/promises';
+import {randomUUID,createHash} from 'node:crypto';
+import assert from 'node:assert/strict';
+const db=new PGlite({extensions:{pgcrypto}});
+try{
+ await db.exec(`create schema extensions;create extension pgcrypto with schema extensions;create role authenticated;create role anon;create schema auth;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth,public to authenticated;grant execute on function auth.uid() to authenticated;`);
+ for(const file of (await readdir('supabase/migrations')).sort())await db.exec(await readFile('supabase/migrations/'+file,'utf8'));
+ const user=randomUUID(),outsider=randomUUID(),account=randomUUID();for(const id of [user,outsider])await db.query('insert into auth.users values($1)',[id]);
+ await db.exec('grant select,insert,update,delete on all tables in schema public to authenticated;grant usage,select on all sequences in schema public to authenticated');
+ const as=async id=>{await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);await db.exec('set role authenticated')};
+ const scalar=async(q,p=[])=>(await db.query(q,p)).rows[0]?.value;
+ await as(user);const house=await scalar("select create_household('Importações','Ana') as value");
+ await scalar("select create_account($1,$2,$3,'Banco',10000) as value",[account,house,user]);
+ const action=async(action,data={},id=randomUUID(),h=house)=>scalar('select cc_action($1,$2,$3,$4::jsonb) as value',[id,h,action,JSON.stringify(data)]);
+ const card=(await action('save_card',{name:'Cartão',owner_id:user,account_id:account,credit_limit:1000000,closing_day:5,due_day:15,card_status:'active',color:'#765484'})).card_id;
+ const purchase=async(title,amount=13,extra={})=>{await action('purchase',{card_id:card,responsible_id:user,title,category:'Casa',amount,date:'2024-01-01',installments:1,next_installment:1,first_cycle:'2024-11-01',...extra});return scalar('select id as value from cc_purchases where title=$1',[title])};
+ const manual=await purchase('Manual preservada');const manualLine=await scalar('select id as value from cc_lines where purchase_id=$1',[manual]);
+ const invoice=await scalar("select id as value from cc_invoices where card_id=$1 and cycle='2024-11-01'",[card]);
+ const revision=async()=>Number(await scalar('select revision as value from cc_invoices where id=$1',[invoice]));
+ const bank=async()=>Number(await scalar('select balance as value from financial_accounts where id=$1',[account]));
+ const row=(title,extra={})=>({original:title,description:title,category:'Casa',date:'2024-01-01',amount:150,total_amount:1500,installment:3,count:10,bank_id:'',kind:'purchase',decision:'new',...extra});
+ const hash=()=>createHash('sha256').update(randomUUID()).digest('hex');
+ const importFile=async(rows,extra={},id=randomUUID())=>{const p={card_id:card,invoice_id:invoice,revision:await revision(),confirmed:true,keep_target:false,file_hash:hash(),file_name:'fatura.csv',rows,...extra};return {id,p,result:await action('import_statement',p,id)}};
+ const preview=async id=>action('preview_undo_import',{import_id:id});
+ const undo=async(id,key=randomUUID())=>action('undo_import',{import_id:id,confirmed:true},key);
+ const count=async table=>Number(await scalar(`select count(*)::int as value from ${table}`));
+ const balanceBefore=await bank();
+ const first=await importFile([row('Notebook',{bank_id:'BANK-3'}),row('Manual preservada',{decision:'link',match_id:manualLine}),row('Ignorar',{decision:'skip'})]);
+ assert.equal(first.result.import_id,first.id);assert.equal(await count('cc_import_items'),10);
+ const imported=await scalar("select purchase_id as value from cc_lines where bank_transaction_id='BANK-3'");
+ assert.equal(Number(await scalar('select min(installment) as value from cc_lines where purchase_id=$1',[imported])),3);
+ assert.equal(Number(await scalar('select count(*)::int as value from cc_lines where purchase_id=$1',[imported])),8);
+ assert.equal((await preview(first.id)).created_lines,8);assert.equal((await preview(first.id)).linked_lines,1);
+ const independent=await importFile([row('Outro arquivo',{count:1,installment:1,total_amount:25,amount:25})]);
+ await assert.rejects(()=>action('undo_import',{import_id:first.id,confirmed:false}),/Confirme/);
+ const undoKey=randomUUID();await undo(first.id,undoKey);await undo(first.id,undoKey);
+ assert.equal(await scalar('select id as value from cc_purchases where id=$1',[imported]),undefined);
+ assert.equal(await scalar('select id as value from cc_lines where id=$1',[manualLine]),manualLine);
+ assert.ok(await scalar("select id as value from cc_purchases where title='Outro arquivo'"));
+ assert.equal(await bank(),balanceBefore);
+ assert.equal(await scalar('select status as value from cc_imports where id=$1',[first.id]),'undone');
+ const reimport=await importFile(first.p.rows,{file_hash:first.p.file_hash});assert.notEqual(reimport.id,first.id);
+ assert.equal(Number(await scalar("select count(*)::int as value from cc_purchases where title='Notebook'")),1);
+ await assert.rejects(()=>importFile(first.p.rows,{file_hash:first.p.file_hash}),/Arquivo já importado/);
+ const againLine=await scalar("select id as value from cc_lines where bank_transaction_id='BANK-3'");
+ const dependent=await importFile([row('Notebook',{decision:'link',match_id:againLine})]);
+ assert.equal((await preview(reimport.id)).safe,false);await assert.rejects(()=>undo(reimport.id),/importação/);
+ await undo(dependent.id);await undo(reimport.id);
+ assert.equal(await scalar('select id as value from cc_lines where id=$1',[manualLine]),manualLine);
+ // An invalid second row rolls back ALL purchases, invoices, import logs and audit rows.
+ const tables=['cc_imports','cc_purchases','cc_lines','cc_import_items','cc_audit','cc_invoices'];const before=await Promise.all(tables.map(count));
+ await assert.rejects(()=>importFile([row('Válida antes da falha'),row('Inválida',{amount:0})]));
+ assert.deepEqual(await Promise.all(tables.map(count)),before);
+ const duplicate=await importFile([row('Suspeita',{count:1,installment:1,amount:20,total_amount:20})]);
+ await assert.rejects(()=>importFile([row('Suspeita',{count:1,installment:1,amount:20,total_amount:20})]),/duplicidade/);
+ const authorizedDuplicate=await importFile([row('Suspeita',{count:1,installment:1,amount:20,total_amount:20})],{confirm_duplicates:true});await undo(authorizedDuplicate.id);
+ // Reconciled import creates exact adjustment ownership, allowing a safe, complete rollback.
+ await action('adjust_invoice',{invoice_id:invoice,revision:await revision(),total:1000});
+ const sum=async id=>Number(await scalar('select coalesce(sum(amount),0) as value from cc_lines where invoice_id=$1',[id]));
+ const beforeKept=await sum(invoice),kept=await importFile([row('Com ajuste',{count:1,installment:1,amount:30,total_amount:30})],{keep_target:true});
+ assert.equal(await sum(invoice),beforeKept);assert.ok((await preview(kept.id)).created_lines>1);
+ await undo(kept.id);assert.equal(await sum(invoice),beforeKept);
+ const blockedAdjustment=await importFile([row('Conciliação posterior',{count:1,installment:1,amount:11,total_amount:11})]);
+ await action('adjust_invoice',{invoice_id:invoice,revision:await revision(),total:1100});await assert.rejects(()=>undo(blockedAdjustment.id),/Conciliação|concilia/);
+
+ // A later keep-total import can depend financially on earlier imports without linking their rows.
+ const beforeDependency=await sum(invoice),source=await importFile([row('Fonte da conciliação',{count:1,installment:1,total_amount:21,amount:21})]);
+ const reconciling=await importFile([row('Conciliação dependente',{count:1,installment:1,total_amount:22,amount:22})],{keep_target:true});
+ await assert.rejects(()=>undo(source.id),/concilia/);await undo(reconciling.id);await undo(source.id);assert.equal(await sum(invoice),beforeDependency);
+ // Even an unknown future FK cannot leave a partially reversed import or partial audit records.
+ const constrained=await importFile([row('Vínculo externo')]);const constrainedLine=await scalar("select id as value from cc_lines where title='Vínculo externo' order by installment limit 1");
+ await db.exec('reset role');await db.exec('create table future_line_reference(line_id uuid references cc_lines(id))');await db.query('insert into future_line_reference values($1)',[constrainedLine]);await as(user);
+ const beforeUndoFailure=await Promise.all(tables.map(count));await assert.rejects(()=>undo(constrained.id),/foreign key|reference/i);assert.deepEqual(await Promise.all(tables.map(count)),beforeUndoFailure);assert.equal(await scalar('select status as value from cc_imports where id=$1',[constrained.id]),'active');
+ // Legacy ownership is never inferred even when its old summary contains exact-looking line IDs.
+ const legacy=randomUUID();await db.exec('reset role');await db.query("insert into cc_imports(id,household_id,card_id,invoice_id,file_hash,file_name,actor_id,summary) values($1,$2,$3,$4,$5,'antiga.pdf',$6,$7::jsonb)",[legacy,house,card,invoice,hash(),user,JSON.stringify({rows:[{decision:'new',line_id:manualLine}]})]);await as(user);
+ assert.equal((await preview(legacy)).safe,false);await assert.rejects(()=>undo(legacy),/antiga sem identificação/);
+ // Editing a historical imported purchase moves its remaining schedule without recreating previous parts.
+ const moved=await importFile([row('Mover importada')]);const movedPid=await scalar("select id as value from cc_purchases where title='Mover importada'");
+ const edit=async extra=>({purchase_id:movedPid,revision:Number(await scalar('select revision as value from cc_purchases where id=$1',[movedPid])),invoice_revisions:Object.fromEntries((await db.query('select id,revision from cc_invoices')).rows.map(i=>[i.id,Number(i.revision)])),card_id:card,title:'Mover importada',category:'Casa',amount:1500,date:'2024-01-01',installments:10,next_installment:3,first_cycle:'2025-02-01',confirm_reconciled:true,...extra});
+ const originBefore=await sum(invoice);await assert.rejects(async()=>action('edit_purchase',await edit({confirm_reconciled:false})),/Confirme mover/);
+ await action('edit_purchase',await edit({}));assert.equal(await sum(invoice),originBefore-150);
+ const destination=await scalar("select id as value from cc_invoices where card_id=$1 and cycle='2025-02-01'",[card]);assert.ok(await sum(destination)>=150);
+ assert.equal(Number(await scalar('select count(*)::int as value from cc_lines where purchase_id=$1 and installment is not null',[movedPid])),8);
+ await assert.rejects(()=>undo(moved.id),/alterado/);
+ await action('edit_purchase',await edit({revision:1,installments:1,next_installment:1,amount:300}));
+ assert.equal(Number(await scalar('select count(*)::int as value from cc_lines where purchase_id=$1 and installment is not null',[movedPid])),1);
+ await action('edit_purchase',await edit({revision:2,installments:4,next_installment:2,amount:400}));
+ assert.equal(Number(await scalar('select min(installment) as value from cc_lines where purchase_id=$1 and installment is not null',[movedPid])),2);
+ assert.equal(Number(await scalar('select count(*)::int as value from cc_lines where purchase_id=$1 and installment is not null',[movedPid])),3);
+ const paidImport=await importFile([row('Fatura paga',{count:1,installment:1,total_amount:12,amount:12})]);
+ await action('pay_invoice',{invoice_id:invoice,revision:await revision(),account_id:account,amount:1,date:'2024-11-15'});
+ const paidBalance=await bank();await assert.rejects(()=>undo(paidImport.id),/pagamento|alterado/);assert.equal(await bank(),paidBalance);
+ assert.ok(Number(await scalar("select count(*)::int as value from cc_audit where table_name='cc_lines' and after_data is null"))>0);
+ const manifestBefore=await count('cc_import_items');await db.query('delete from cc_import_items where import_id=$1',[independent.id]);assert.equal(await count('cc_import_items'),manifestBefore);
+ await as(outsider);assert.equal(await count('cc_import_items'),0);await assert.rejects(()=>preview(paidImport.id),/permissão|indisponível/);await assert.rejects(()=>undo(paidImport.id),/permissão|indisponível/);
+ assert.equal(await scalar("select has_function_privilege('authenticated','public.cc_import_impact(uuid)','execute') as value"),false);
+ console.log('Importações: proveniência, desfazer retroativo, parcelas futuras, vínculo preexistente/manual/outra importação preservados, reimportação, duplicidades, rollback integral, conciliação, movimento mês/ano, conversões, pagamentos, RLS e auditoria OK');
+}finally{await db.close()}
