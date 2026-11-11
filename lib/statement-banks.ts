@@ -20,7 +20,9 @@ const AMOUNT = '(-?\\s*(?:R\\$\\s*)?[\\d.]+,\\d{2})';
 const common = {
   due: [new RegExp('(?:data\\s+de\\s+)?vencimento[^0-9\\n]{0,40}' + DATE, 'i')],
   total: [
-    new RegExp('total\\s+(?:desta|da)\\s+fatura[^0-9\\n-]{0,30}' + AMOUNT, 'i'),
+    new RegExp('total\\s+desta\\s+fatura[^0-9\\n-]{0,30}' + AMOUNT, 'i'),
+    new RegExp('o\\s+total\\s+da\\s+sua\\s+fatura\\s+[eé][^0-9\\n-]{0,30}' + AMOUNT, 'i'),
+    new RegExp('total\\s+da\\s+fatura(?!\\s+anterior)[^0-9\\n-]{0,30}' + AMOUNT, 'i'),
     new RegExp('valor\\s+(?:total\\s+)?da\\s+fatura[^0-9\\n-]{0,30}' + AMOUNT, 'i'),
     new RegExp('(?:total|valor)\\s+a\\s+pagar[^0-9\\n-]{0,30}' + AMOUNT, 'i'),
   ],
@@ -83,7 +85,7 @@ export function readHeader(text: string): StatementHeader {
   // Coerência: o vencimento vem depois do fechamento.
   if (closing && due && due <= closing) due = '';
   const total = totalText ? Math.abs(money(totalText)) : NaN;
-  const last4 = text.match(/final\s*:?\s*(\d{4})\b/i)?.[1] ?? text.match(/(?:\*{2,}|x{4}|\.{4})\s?(\d{4})\b/i)?.[1] ?? '';
+  const last4 = text.match(/final\s*:?\s*(\d{4})\b/i)?.[1] ?? text.match(/(?:\*{4}|x{4})[.\s-]?(\d{4})\b/i)?.[1] ?? '';
   return {
     bank: profile?.id ?? 'generico',
     bankLabel: profile?.label ?? 'Banco não identificado',

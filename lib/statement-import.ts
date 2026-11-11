@@ -1,12 +1,12 @@
 // Regras puras da importação de faturas: mês de referência, classificação dos itens,
 // totais e montagem do pedido ao banco. Sem React e sem acesso ao banco, para facilitar
 // testes e, no futuro, importar várias faturas de uma vez (um ImportDraft por arquivo).
-import {cleanDescription, normal, type StatementRow} from './statements';
+import {cleanDescription, normal, type FutureInstallment, type StatementRow} from './statements';
 import type {Card, CreditData, Invoice, Line} from './credit';
 import type {StatementHeader} from './statement-banks';
 
 export type ImportGroup = 'avista' | 'parcela-nova' | 'existente' | 'revisar' | 'ignorado';
-export type ImportRow = StatementRow & {group: ImportGroup; note: string; estimated: boolean; repeated: number};
+export type ImportRow = StatementRow & {group: ImportGroup; note: string; estimated: boolean; repeated: number; amounts: number[] | null};
 export type ReferenceOption = {cycle: string; label: string; closing: string; due: string; invoice?: Invoice};
 export type ImportDraft = {
   fileName: string; hash: string; header: StatementHeader; rows: ImportRow[];
@@ -86,7 +86,7 @@ function guessCategory(row: StatementRow, lines: Line[]) {
  * - à vista idêntico a um lançamento existente → "revisar" (você decide);
  * - pagamentos da fatura anterior → ignorados.
  */
-export function classifyRows(rows: StatementRow[], data: CreditData, cardId: string): ImportRow[] {
+export function classifyRows(rows: StatementRow[], data: CreditData, cardId: string, future: FutureInstallment[] = []): ImportRow[] {
   const lines = data.lines.filter(l => l.card_id === cardId && l.line_type !== 'adjustment');
   const purchases = new Map(data.purchases.map(p => [p.id, p]));
   const invoices = new Map(data.invoices.map(i => [i.id, i]));
@@ -97,7 +97,8 @@ export function classifyRows(rows: StatementRow[], data: CreditData, cardId: str
   const where = (l: Line) => {const i = invoices.get(l.invoice_id); return i ? cycleLabel(i.cycle) : 'outra fatura'};
 
   return rows.map(raw => {
-    const row: ImportRow = {...raw, category: guessCategory(raw, data.lines.filter(l => l.card_id === cardId)), group: 'avista', note: '', estimated: false, repeated: repeats.get(key(raw)) ?? 1, decision: '', match_id: ''};
+    const row: ImportRow = {...raw, category: guessCategory(raw, data.lines.filter(l => l.card_id === cardId)), group: 'avista', note: raw.card_final ? 'Cartão final ' + raw.card_final : '', estimated: false, repeated: repeats.get(key(raw)) ?? 1, decision: '', match_id: '', amounts: null};
+    const withNote = (text: string) => row.note ? text + ' · ' + row.note : text;
     const take = (l: Line) => {used.add(l.id); return l};
     if (row.kind === 'payment') return {...row, group: 'ignorado', decision: 'skip', note: 'Pagamento da fatura anterior'};
     if (!row.date || !Number.isFinite(row.amount) || row.amount === 0 || !row.description) return {...row, group: 'revisar', note: 'Data, valor ou descrição incompletos: corrija em Editar'};
@@ -108,16 +109,22 @@ export function classifyRows(rows: StatementRow[], data: CreditData, cardId: str
     if (row.kind === 'purchase' && row.count > 1) {
       const candidates = lines.filter(l => !used.has(l.id) && l.line_type === 'principal' && l.installment === row.installment && purchases.get(l.purchase_id ?? '')?.installments === row.count && Math.abs(cents(l.amount) - cents(row.amount)) <= 5);
       const same = candidates.find(l => merchant(l.title) === merchant(row.description));
-      if (same) return {...row, group: 'existente', decision: 'link', match_id: take(same).id, note: `Parcela ${row.installment}/${row.count} já lançada · ${where(same)}`};
+      if (same) return {...row, group: 'existente', decision: 'link', match_id: take(same).id, note: withNote(`Parcela ${row.installment}/${row.count} já lançada · ${where(same)}`)};
       if (candidates.length) return {...row, group: 'revisar', match_id: candidates[0].id, note: `Parecida com "${candidates[0].title}" ${row.installment}/${row.count} já lançada · ${where(candidates[0])}. É a mesma compra?`};
       const sibling = lines.find(l => l.line_type === 'principal' && merchant(l.title) === merchant(row.description) && purchases.get(l.purchase_id ?? '')?.installments === row.count);
       if (sibling) return {...row, group: 'revisar', note: `Já existe a compra "${sibling.title}" em ${row.count}x, mas sem a parcela ${row.installment}. Confira antes de lançar.`};
-      return {...row, group: 'parcela-nova', decision: 'new', estimated: true, total_amount: Math.round(Math.abs(row.amount) * 100) * row.count / 100, note: `Lança as parcelas ${row.installment} a ${row.count}`};
+      // Valor das próximas parcelas: lido em "Compras parceladas - próximas faturas" quando o PDF informa.
+      const next = future.find(f => f.count === row.count && f.installment === row.installment + 1 && merchant(f.description) === merchant(row.description) && (!row.date || f.day === dateBR(row.date).slice(0, 5)));
+      const rest = row.count - row.installment, following = next ? Math.abs(next.amount) : Math.abs(row.amount);
+      const amounts = [Math.abs(row.amount), ...Array.from({length: rest}, () => following)];
+      const total = (cents(Math.abs(row.amount)) * row.installment + cents(following) * rest) / 100;
+      return {...row, group: 'parcela-nova', decision: 'new', estimated: !next && rest > 0, amounts, total_amount: total,
+        note: withNote(`Lança as parcelas ${row.installment} a ${row.count}` + (rest > 0 ? ` · próximas de ${following.toFixed(2).replace('.', ',')}${next ? ' (lido no PDF)' : ' (estimado)'}` : ''))};
     }
     const twin = lines.find(l => !used.has(l.id) && l.charge_date === row.date && cents(l.amount) === cents(row.amount) && merchant(l.title) === merchant(row.description));
-    if (twin) return {...row, group: 'revisar', match_id: twin.id, note: 'Possível duplicado: já existe lançamento igual · ' + where(twin)};
+    if (twin) return {...row, group: 'revisar', match_id: twin.id, note: withNote('Possível duplicado: já existe lançamento igual · ' + where(twin))};
     const total_amount = row.kind === 'purchase' ? Math.abs(row.amount) : row.total_amount;
-    return {...row, group: 'avista', decision: 'new', total_amount, note: row.repeated > 1 ? `Aparece ${row.repeated} vezes no PDF` : ''};
+    return {...row, group: 'avista', decision: 'new', total_amount, note: row.repeated > 1 ? withNote(`Aparece ${row.repeated} vezes no PDF`) : row.note};
   });
 }
 
@@ -140,7 +147,7 @@ export const pending = (rows: ImportRow[]) => rows.filter(r => !r.decision || (r
 
 /** Pedido enviado ao banco (ação import_statement com mês de referência). */
 export function importPayload(draft: ImportDraft, cardId: string, invoice: Invoice | undefined) {
-  const rows = draft.rows.map(r => ({original: r.original, description: r.description.trim(), date: r.date, amount: r.amount, category: r.category.trim() || 'Outros', installment: r.installment, count: r.count, total_amount: r.total_amount, bank_id: r.bank_id, kind: r.kind, decision: r.decision, match_id: r.decision === 'link' ? r.match_id : ''}));
+  const rows = draft.rows.map(r => ({original: r.original, description: r.description.trim(), date: r.date, amount: r.amount, category: r.category.trim() || 'Outros', installment: r.installment, count: r.count, total_amount: r.total_amount, bank_id: r.bank_id, kind: r.kind, decision: r.decision, match_id: r.decision === 'link' ? r.match_id : '', ...(r.decision === 'new' && r.amounts && r.amounts.length > 1 ? {amounts: r.amounts} : {})}));
   const suspect = draft.rows.some(r => r.decision === 'new' && (r.group === 'revisar' || r.repeated > 1));
   return {
     card_id: cardId, cycle: draft.cycle, invoice_id: invoice?.id ?? null, revision: invoice?.revision ?? null,

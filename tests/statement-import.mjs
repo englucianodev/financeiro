@@ -50,3 +50,28 @@ const payload=importPayload({fileName:'f.pdf',hash:'h',header:azul,rows:decided,
 assert.equal(payload.cycle,'2026-11-01');assert.equal(payload.invoice_id,'nov');assert.equal(payload.revision,0);assert.equal(payload.adjust_to_statement,true);assert.equal(payload.confirm_duplicates,true);
 assert.ok(payload.rows.every(r=>!('group' in r)&&!('note' in r)));
 console.log('Importação: cabeçalhos C6/Azul, mês de referência (caso dia 11 → outubro, vence 01/11), parcelas existentes sem duplicar, possíveis duplicados, totais e pedido OK');
+
+// Padrões reais do Itaú/Azul (dados sintéticos): parcela colada ao nome, total da fatura anterior,
+// cartão mascarado com pontos, adicional "(final NNNN)", produtos e serviços e próximas faturas.
+{
+ const text=['Total da fatura anterior\t500,00','Pagamento efetuado em 01/10/2026\t-500,00','Vencimento: 01/11/2026\t=\tTotal desta fatura\t258,79','Emissão: 23/10/2026','Previsão prox. Fechamento: 23/11/2026','Cartão\t5162.XXXX.XXXX.1234',
+  'Lançamentos: compras e saques','FULANO DE TAL (final 1234)','DATA\tESTABELECIMENTO\tVALOR EM R$',
+  '24/11\tCIA AEREA X11/12\t45,00','TURISMO .CIDADE','02/10\tFARMACIA T 01/04\t91,39','03/10\tPADARIA BOA\t20,00','Lançamentos no cartão (final 1234)\t156,39',
+  'FULANO DE TAL (final 9999)','25/09\tCLUBE SAUDE01/03\t90,00','Lançamentos no cartão (final 9999)\t90,00',
+  'Lançamentos: produtos e serviços','DATA\tPRODUTOS/SERVIÇOS\tVALOR EM R$','25/09\tANUIDADE DIFERENCI12/12\t24,80','23/10\tREDUÇÃO ANUIDADE\t-12,40',
+  'Compras parceladas - próximas faturas','DATA\tESTABELECIMENTO\tVALOR EM R$','24/11\tCIA AEREA X12/12\t45,00','02/10\tFARMACIA T 02/04\t91,37','25/09\tCLUBE SAUDE02/03\t90,00','Próxima fatura\t226,37'].join('\n');
+ const h=readHeader(text);assert.deepEqual([h.total,h.last4,h.closing,h.due],[258.79,'1234','2026-10-23','2026-11-01']);
+ const parsed=parseStatement(text,'pdf',h.closing);
+ assert.equal(parsed.future.length,3,'próximas faturas lidas, não importadas');
+ const rows=classifyRows(parsed.rows,{cards:[],invoices:[],purchases:[],lines:[],obligations:[],payments:[],recurrences:[]},'c',parsed.future);
+ const get=d=>rows.find(r=>r.description===d);
+ assert.deepEqual([get('CIA AEREA X').installment,get('CIA AEREA X').count,get('CIA AEREA X').date],[11,12,'2025-11-24'],'parcela colada ao nome');
+ assert.deepEqual(get('FARMACIA T').amounts,[91.39,91.37,91.37,91.37],'centavo da 1ª parcela, próximas lidas do PDF');assert.equal(get('FARMACIA T').total_amount,365.5);assert.equal(get('FARMACIA T').estimated,false);
+ assert.equal(get('CLUBE SAUDE').card_final,'9999');assert.match(get('CLUBE SAUDE').note,/final 9999/);
+ assert.deepEqual([get('ANUIDADE DIFERENCI').kind,get('ANUIDADE DIFERENCI').date,get('ANUIDADE DIFERENCI').card_final],['fee','2026-09-25',undefined]);
+ assert.equal(get('REDUÇÃO ANUIDADE').kind,'refund');
+ assert.equal(rows.reduce((s,r)=>s+Math.round(r.amount*100),0)/100,258.79,'soma dos itens = total do PDF');
+ assert.equal(makeRowSafe('MERCADO 24/7'),1,'"24/7" não é parcela');
+}
+function makeRowSafe(d){return parseStatement('01/10/2026 '+d+' 10,00','pdf').rows[0].count}
+console.log('PDF Itaú/Azul: parcela colada, total atual (não o anterior), cartão mascarado, adicional, produtos/serviços, próximas faturas e centavos OK');

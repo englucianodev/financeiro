@@ -70,7 +70,7 @@ export default function StatementTools({db, household, data, card, categories = 
       const parsed = parseStatement(extracted.text, extracted.format, reference);
       if (!parsed.rows.length) throw new Error('Nenhum lançamento reconhecido neste arquivo. Se for um PDF escaneado, tente novamente; se persistir, use o CSV do banco.');
       requestId.current = crypto.randomUUID();
-      setDraft({fileName: file.name, hash: extracted.hash, header, rows: classifyRows(parsed.rows, data, card.id), cycle: suggestion.cycle, suggestedCycle: suggestion.cycle, reason: suggestion.reason, adjust: header.total !== null});
+      setDraft({fileName: file.name, hash: extracted.hash, header, rows: classifyRows(parsed.rows, data, card.id, parsed.future), cycle: suggestion.cycle, suggestedCycle: suggestion.cycle, reason: suggestion.reason, adjust: header.total !== null});
     } catch (e) {setError(errorMessage(e))} finally {setBusy(false); setProgress('')}
   }
 
@@ -79,7 +79,12 @@ export default function StatementTools({db, household, data, card, categories = 
     setDraft(d => d && {...d, rows: d.rows.map((r, i) => {
       if (i !== n) return r;
       const row = {...r, ...patch};
-      if (patch.count !== undefined || patch.amount !== undefined) row.total_amount = row.count === 1 ? Math.abs(row.amount) : Math.round(Math.abs(row.amount) * 100) * row.count / 100;
+      if (patch.count !== undefined || patch.amount !== undefined || patch.installment !== undefined) {
+        // Mudou a parcela: volta à divisão em partes iguais (os valores lidos no PDF deixam de valer).
+        row.amounts = null;
+        row.total_amount = row.count === 1 ? Math.abs(row.amount) : Math.round(Math.abs(row.amount) * 100) * row.count / 100;
+      }
+      if (patch.total_amount !== undefined) row.amounts = null;
       if (patch.decision === 'new' && row.group === 'revisar') row.note = 'Você decidiu lançar mesmo assim.';
       return row;
     })});
