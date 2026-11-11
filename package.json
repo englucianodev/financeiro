@@ -17,7 +17,8 @@
     "test:password": "tsc app/api/statements/unlock/route.ts lib/pdf-password.ts --outDir .test-build/password --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck --esModuleInterop && node tests/pdf-password.mjs",
     "test:reference": "node tests/import-reference.mjs",
     "test:repair": "node tests/import-repair.mjs",
-    "test:amounts": "node tests/import-amounts.mjs"
+    "test:amounts": "node tests/import-amounts.mjs",
+    "test:category": "node tests/card-category.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.1.0",
