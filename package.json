@@ -7,14 +7,15 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "tsc lib/money.ts lib/identity.ts lib/finance-view.ts lib/credit.ts lib/statements.ts lib/pdf-layout.ts lib/email-notifications.ts --outDir .test-build --module commonjs --target es2021 --skipLibCheck && node tests/money.mjs && node tests/identity.mjs && node tests/finance-view.mjs && node tests/credit-view.mjs && node tests/statements.mjs",
+    "test": "tsc lib/money.ts lib/identity.ts lib/finance-view.ts lib/credit.ts lib/statements.ts lib/pdf-layout.ts lib/email-notifications.ts lib/statement-banks.ts lib/statement-import.ts --outDir .test-build --module commonjs --target es2021 --skipLibCheck && node tests/money.mjs && node tests/identity.mjs && node tests/finance-view.mjs && node tests/credit-view.mjs && node tests/statements.mjs && node tests/statement-import.mjs",
     "test:db": "node tests/database.mjs",
     "test:e2e": "playwright test",
     "test:credit": "node tests/credit-database.mjs",
     "test:imports": "node tests/import-lifecycle.mjs",
     "prebuild": "node scripts/prepare-readers.mjs",
     "predev": "node scripts/prepare-readers.mjs",
-    "test:password": "tsc app/api/statements/unlock/route.ts lib/pdf-password.ts --outDir .test-build/password --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck --esModuleInterop && node tests/pdf-password.mjs"
+    "test:password": "tsc app/api/statements/unlock/route.ts lib/pdf-password.ts --outDir .test-build/password --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck --esModuleInterop && node tests/pdf-password.mjs",
+    "test:reference": "node tests/import-reference.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.1.0",
