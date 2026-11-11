@@ -169,3 +169,6 @@ html.dark button{color:#fff}html.dark .bottom-nav button,html.dark .more-menu bu
 .import-footer{position:sticky;bottom:-24px;background:var(--panel);padding:12px 0 4px;border-top:1px solid var(--line);margin-top:12px}
 .import-done{color:var(--accent,#167d8d);font-weight:600}
 @media(max-width:640px){.import-totals{grid-template-columns:1fr 1fr}}
+.warning{color:#8a5a00;background:#e0a8001a;border-radius:10px;padding:8px 10px}
+.dark .warning{color:#f5cf65}
+.undo-panel{margin-top:10px;display:flex;flex-direction:column;gap:8px}

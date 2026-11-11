@@ -15,7 +15,8 @@
     "prebuild": "node scripts/prepare-readers.mjs",
     "predev": "node scripts/prepare-readers.mjs",
     "test:password": "tsc app/api/statements/unlock/route.ts lib/pdf-password.ts --outDir .test-build/password --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck --esModuleInterop && node tests/pdf-password.mjs",
-    "test:reference": "node tests/import-reference.mjs"
+    "test:reference": "node tests/import-reference.mjs",
+    "test:repair": "node tests/import-repair.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.1.0",

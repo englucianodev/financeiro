@@ -149,7 +149,7 @@ export default function StatementTools({db, household, data, card, categories = 
 
     {draft && totals && <section className="import-review">
       <p className="muted">{draft.header.bankLabel} · {draft.fileName}{draft.header.last4 && ' · final ' + draft.header.last4}</p>
-      {duplicateFile && <p role="alert">Este arquivo já foi importado neste cartão. Consulte o histórico abaixo.</p>}
+      {duplicateFile && <p className="warning">Este arquivo já tem uma importação ativa neste cartão. Se ela não tiver mais lançamentos, será liberada automaticamente ao importar; se tiver, desfaça-a antes no histórico.</p>}
 
       <label className="import-reference">Fatura de referência
         <select value={draft.cycle} onChange={e => {requestId.current = crypto.randomUUID(); setDraft({...draft, cycle: e.target.value})}}>
@@ -178,7 +178,7 @@ export default function StatementTools({db, household, data, card, categories = 
       <footer className="import-footer">
         {waiting.length > 0 && <p role="status">Falta decidir {waiting.length} item(ns).</p>}
         <div className="button-row">
-          <button disabled={busy || waiting.length > 0 || duplicateFile || (newCount === 0 && !draft.adjust)} onClick={() => void confirm()}>{busy ? 'Importando…' : `Importar ${newCount} lançamento(s)`}</button>
+          <button disabled={busy || waiting.length > 0 || (newCount === 0 && !draft.adjust)} onClick={() => void confirm()}>{busy ? 'Importando…' : `Importar ${newCount} lançamento(s)`}</button>
           <button type="button" disabled={busy} onClick={() => setDraft(null)}>Escolher outro arquivo</button>
         </div>
       </footer>

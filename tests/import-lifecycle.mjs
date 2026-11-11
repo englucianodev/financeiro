@@ -91,7 +91,7 @@ try{
  assert.equal(Number(await scalar('select count(*)::int as value from cc_lines where purchase_id=$1 and installment is not null',[movedPid])),3);
  const paidImport=await importFile([row('Fatura paga',{count:1,installment:1,total_amount:12,amount:12})]);
  await action('pay_invoice',{invoice_id:invoice,revision:await revision(),account_id:account,amount:1,date:'2024-11-15'});
- const paidBalance=await bank();await assert.rejects(()=>undo(paidImport.id),/pagamento|alterado/);assert.equal(await bank(),paidBalance);
+ const paidBalance=await bank();await undo(paidImport.id);assert.equal(await bank(),paidBalance,'026: desfazer com fatura paga preserva o pagamento e o saldo');
  assert.ok(Number(await scalar("select count(*)::int as value from cc_audit where table_name='cc_lines' and after_data is null"))>0);
  const manifestBefore=await count('cc_import_items');await db.query('delete from cc_import_items where import_id=$1',[independent.id]);assert.equal(await count('cc_import_items'),manifestBefore);
  await as(outsider);assert.equal(await count('cc_import_items'),0);await assert.rejects(()=>preview(paidImport.id),/permissão|indisponível/);await assert.rejects(()=>undo(paidImport.id),/permissão|indisponível/);
