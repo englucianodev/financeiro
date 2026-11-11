@@ -5,7 +5,7 @@ import type {CreditData} from '@/lib/credit';
 import {brl} from '@/lib/money';
 import {monthLabel} from '@/lib/finance-view';
 import {errorMessage} from '@/lib/errors';
-type ImportRecord={id:string;card_id:string;invoice_id:string;file_name:string;created_at:string;status:'active'|'undone';provenance_version:number;summary:{identified?:number;imported?:number;linked?:number;total?:number;rows?:{amount:number;decision:string}[]}};
+type ImportRecord={id:string;card_id:string;invoice_id:string;file_name:string;created_at:string;status:'active'|'undone';provenance_version:number;summary:{identified?:number;imported?:number;linked?:number;total?:number;statement_total?:number|null;adjustment?:number|null;rows?:{amount:number;decision:string}[]}};
 type Impact={import_id:string;safe:boolean;reasons:string[];created_lines:number;created_purchases:number;linked_lines:number;invoice_ids:string[];bank_delta:number};
 export default function ImportHistory({db,household,data,cardId,reload,onChange}:{db:SupabaseClient;household:string;data:CreditData;cardId?:string;reload:()=>Promise<void>;onChange?:()=>Promise<void>}){
  const [history,setHistory]=useState<ImportRecord[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[preview,setPreview]=useState<Impact|null>(null);
@@ -25,7 +25,7 @@ export default function ImportHistory({db,household,data,cardId,reload,onChange}
  {history.map(h=>{const total=h.summary.total??(h.summary.rows?h.summary.rows.filter(r=>r.decision==='new').reduce((s,r)=>s+Math.round(Number(r.amount)*100),0)/100:null);return <article className="credit-invoice" key={h.id}>
  <h4>{data.cards.find(c=>c.id===h.card_id)?.name??'Cartão anterior'} · {h.file_name}</h4>
  <p>Data: {new Date(h.created_at).toLocaleString('pt-BR',{timeZone:'America/Fortaleza'})} · Fatura: {invoiceText(h.invoice_id)}</p>
- <p>{h.summary.identified??0} lançamentos identificados · {h.summary.imported??0} importados · {h.summary.linked??0} vinculados · Total importado nesta fatura: {total===null?'Não informado (legado)':brl(Number(total))}</p>
+ <p>{h.summary.identified??0} lançamentos identificados · {h.summary.imported??0} importados · {h.summary.linked??0} vinculados · Total importado nesta fatura: {total===null?'Não informado (legado)':brl(Number(total))}{h.summary.statement_total!=null&&' · Total do PDF: '+brl(Number(h.summary.statement_total))}{h.summary.adjustment!=null&&' · Ajuste: '+brl(Number(h.summary.adjustment))}</p>
  <p>Status: {h.status==='undone'?'Desfeita':h.provenance_version===1?'Concluída':'Revisão necessária (legado)'}</p><small>ID: {h.id}</small>
  {h.status!=='undone'&&<button disabled={busy} onClick={()=>void act('preview_undo_import',h.id)}>Desfazer importação</button>}
  </article>})}{!history.length&&<p>Nenhuma importação registrada.</p>}

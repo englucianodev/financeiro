@@ -130,3 +130,42 @@ html.dark button{color:#fff}html.dark .bottom-nav button,html.dark .more-menu bu
 .invoice-details { flex-basis:100%; width:100%; padding:1rem; border-top:1px solid var(--line); }
 .movement-row:has(.invoice-details) { flex-wrap:wrap; }
 .transaction-actions nav[hidden] { display:none; }
+
+/* Importação de faturas (Etapa 2) */
+.statement-dialog{width:min(96vw,760px)}
+.import-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.import-header h2{margin:0}
+.link-button{background:none;border:0;box-shadow:none;color:var(--accent,#167d8d);padding:4px 6px;min-height:0;font-weight:600;text-decoration:underline;cursor:pointer}
+.file-drop{display:flex;flex-direction:column;gap:6px;border:2px dashed var(--line);border-radius:16px;padding:24px;text-align:center;cursor:pointer}
+.file-drop span{font-weight:700}
+.import-password,.import-review,.manual-adjust,.import-history-box{margin-top:16px}
+.import-reference{display:flex;flex-direction:column;gap:6px;font-weight:600}
+.import-reference small{font-weight:400;color:var(--muted)}
+.import-totals{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}
+.import-totals div{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px}
+.import-totals span{font-size:.75rem;color:var(--muted)}
+.import-totals strong{font-size:1.05rem;font-variant-numeric:tabular-nums}
+.import-totals .has-difference{border-color:#d9534f;background:#d9534f14}
+.import-totals .has-difference strong{color:#c0392b}
+.import-totals .no-difference strong{color:var(--accent,#167d8d)}
+.import-group{border:1px solid var(--line);border-radius:14px;margin:10px 0;padding:6px 10px}
+.import-group summary{cursor:pointer;padding:6px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+.import-group summary small{color:var(--muted);font-weight:400}
+.import-group .count{background:var(--line);border-radius:999px;padding:0 8px;font-size:.8rem}
+.group-revisar{border-color:#e0a800}
+.import-group ul{list-style:none;margin:0;padding:0}
+.import-row{border-top:1px solid var(--line);padding:8px 0}
+.import-row.needs-decision{background:#e0a80012}
+.import-row-main{display:grid;grid-template-columns:48px 1fr auto;gap:8px;align-items:baseline}
+.import-date{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.85rem}
+.import-desc small{display:block;color:var(--muted);font-size:.78rem}
+.import-desc em{font-style:normal;color:var(--muted);font-size:.85rem}
+.import-row-main strong{font-variant-numeric:tabular-nums}
+.import-row-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:4px}
+.import-row-actions select{width:auto;min-height:34px;padding:4px 8px;font-size:.85rem}
+.import-editor{margin-top:8px}
+.inline-pair{display:flex;align-items:center;gap:6px}
+.inline-pair input{width:70px}
+.import-footer{position:sticky;bottom:-24px;background:var(--panel);padding:12px 0 4px;border-top:1px solid var(--line);margin-top:12px}
+.import-done{color:var(--accent,#167d8d);font-weight:600}
+@media(max-width:640px){.import-totals{grid-template-columns:1fr 1fr}}
