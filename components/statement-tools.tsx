@@ -1,33 +1,216 @@
 "use client";
-import {useEffect,useRef,useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import type {SupabaseClient} from '@supabase/supabase-js';
-import {type Card,type CreditData,invoiceTotals,rootCard} from '@/lib/credit';
-import {parseStatement,compareRow,type StatementRow} from '@/lib/statements';
-import {readStatementFile,recognizeProtectedPages} from '@/lib/statement-file';
-import {brl} from '@/lib/money';
+import {type Card, type CreditData, invoiceTotals, rootCard} from '@/lib/credit';
+import {parseStatement, type StatementRow} from '@/lib/statements';
+import {readStatementFile, recognizeProtectedPages} from '@/lib/statement-file';
+import {readHeader} from '@/lib/statement-banks';
+import {classifyRows, cycleLabel, dateBR, importPayload, importTotals, pending, referenceOptions, suggestReference, type ImportDraft, type ImportGroup, type ImportRow} from '@/lib/statement-import';
+import {brl, today} from '@/lib/money';
+import {errorMessage} from '@/lib/errors';
 import ImportHistory from './import-history';
-export default function StatementTools({db,household,data,card,reload,onClose}:{db:SupabaseClient;household:string;data:CreditData;card:Card;reload:()=>Promise<void>;onClose:()=>void}){
- const dialog=useRef<HTMLDialogElement>(null),keys=useRef(new Map<string,string>()),lock=useRef(false);const root=rootCard(data.cards,card),invoices=data.invoices.filter(i=>i.card_id===root.id);
- const [invoice,setInvoice]=useState(invoices[0]?.id??''),[rows,setRows]=useState<StatementRow[]>([]),[metadata,setMetadata]=useState<Record<string,string>>({}),[warnings,setWarnings]=useState<string[]>([]),[hash,setHash]=useState(''),[name,setName]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[total,setTotal]=useState(''),[confirmed,setConfirmed]=useState(false),[keep,setKeep]=useState(false),[history,setHistory]=useState<{file_hash?:string;status?:string;file_name:string;summary:Record<string,unknown>}[]>([]),[target,setTarget]=useState<number|null>(null),[selectedRows,setSelectedRows]=useState<number[]>([]);
- const [passwordNeeded,setPasswordNeeded]=useState(false),[password,setPassword]=useState(''),[savePassword,setSavePassword]=useState(false);const passwordReply=useRef<((v:{password:string;save:boolean}|null)=>void)|null>(null);
- const selected=invoices.find(i=>i.id===invoice),current=selected?invoiceTotals(selected,data.lines).total:0;
- async function loadHistory(){const r=await db.from('cc_imports').select('file_hash,file_name,summary,status').eq('card_id',card.id);if(r.error)throw r.error;setHistory(r.data??[])}
- useEffect(()=>{dialog.current?.showModal();void loadHistory().catch(e=>setError(String(e)))},[]);
- useEffect(()=>{setTarget(null);void db.from('cc_invoice_targets').select('target').eq('invoice_id',invoice).maybeSingle().then(r=>{if(r.data)setTarget(Number(r.data.target))})},[invoice,db]);
- async function save(action:string,payload:Record<string,unknown>){if(lock.current||!selected)return;lock.current=true;setBusy(true);setError('');const p={card_id:card.id,invoice_id:invoice,revision:selected.revision,...payload},signature=JSON.stringify([action,p]);let id=keys.current.get(signature);if(!id){id=crypto.randomUUID();keys.current.set(signature,id)}try{const r=await db.rpc('cc_action',{p_id:id,p_household:household,p_action:action,p_data:p});if(r.error){if(action==='import_statement')await db.rpc('record_cc_import_error',{p_household:household,p_data:{file_name:name,error:r.error.message}});throw r.error}await reload();onClose()}catch(e){setError(e instanceof Error?e.message:String((e as {message?:string}).message??e))}finally{lock.current=false;setBusy(false)}}
- async function protectedReader(file:File){
-  const session=await db.auth.getSession();const token=session.data.session?.access_token;if(!token)throw new Error('Entre novamente para abrir o PDF protegido.');
-  let supplied:{password:string;save:boolean}|null={password:'',save:false};
-  while(supplied){const body=new FormData();body.set('file',file);body.set('card',card.id);body.set('password',supplied.password);body.set('save',String(supplied.save));
-   const response=await fetch('/api/statements/unlock',{method:'POST',headers:{Authorization:'Bearer '+token},body,cache:'no-store'});const result=await response.json();
-   if(result.needsPassword){if(result.hasSaved)setSavePassword(true);setPassword('');setPasswordNeeded(true);supplied=await new Promise(resolve=>{passwordReply.current=resolve});setPasswordNeeded(false);continue}
-   if(!response.ok)throw new Error(result.error??'Não foi possível abrir o PDF.');return recognizeProtectedPages(result.pages);
-  }throw new Error('Leitura cancelada.');
- }
- const update=(n:number,patch:Partial<StatementRow>)=>{setConfirmed(false);setRows(old=>old.map((r,i)=>{if(i!==n)return r;const row={...r,...patch};const changed=patch.amount!==undefined||patch.count!==undefined;const compared=compareRow(row,data,card.id);return {...row,comparison:compared.comparison,total_amount:patch.total_amount!==undefined?patch.total_amount:changed?(row.count===1?Math.abs(row.amount):null):row.total_amount}}))};
- return <dialog className="account-dialog statement-dialog" ref={dialog} aria-label="Importar e ajustar fatura" onCancel={onClose}><h2>Importar ou ajustar fatura · {card.name}</h2><label>Fatura de destino<select aria-label="Fatura de destino" value={invoice} onChange={e=>{setInvoice(e.target.value);setConfirmed(false)}}>{invoices.map(i=><option key={i.id} value={i.id}>{i.cycle.slice(0,7)} · vence {i.due_date}</option>)}</select></label>{!invoices.length&&<p>Atualize o cartão para gerar suas faturas antes de importar.</p>}
- <section><h3>Ajustar valor da fatura</h3><p>Registrado: {brl(current)}. Pagamentos serão preservados.</p><label>Total real informado pelo banco<input type="number" step=".01" value={total} onChange={e=>setTotal(e.target.value)}/></label>{total!==''&&<p>Prévia: {Number(total)-current>=0?'Complemento de Fatura':'Redução de Fatura'} · {brl(Number(total)-current)}</p>}<button disabled={busy||!selected||total===''} onClick={()=>{if(window.confirm('Confirmar o ajuste de '+brl(Number(total)-current)+' sem alterar compras ou pagamentos?'))void save('adjust_invoice',{total:Number(total)})}}>Confirmar ajuste</button>{data.lines.filter(l=>l.invoice_id===invoice&&l.line_type==='adjustment').map(l=><p key={l.id}>{l.title} · {brl(Number(l.amount))} <button disabled={busy} onClick={()=>{if(window.confirm('Reverter este ajuste com um lançamento compensatório?'))void save('reverse_adjustment',{line_id:l.id})}}>Reverter ajuste</button></p>)}</section>
- {passwordNeeded&&<section role="group" aria-label="Senha do PDF"><h3>PDF protegido por senha</h3><p>Informe a senha. Se uma senha salva não funcionou, use a senha atual.</p><label>Senha do PDF<input type="password" autoComplete="off" value={password} onChange={e=>setPassword(e.target.value)}/></label><label className="check"><input type="checkbox" checked={savePassword} onChange={e=>setSavePassword(e.target.checked)}/>Salvar senha criptografada para este usuário e cartão</label><button disabled={!password} onClick={()=>{passwordReply.current?.({password,save:savePassword});setPassword('')}}>Abrir PDF</button><button onClick={()=>passwordReply.current?.(null)}>Cancelar leitura</button></section>}<section><h3>Importar fatura</h3><p>PDF, CSV ou OFX. PDFs protegidos são abertos no servidor autenticado; a senha salva nunca retorna ao navegador. Nada será gravado antes da confirmação final.</p><input aria-label="Arquivo da fatura" type="file" accept=".pdf,.csv,.ofx" disabled={busy} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;setBusy(true);setRows([]);setSelectedRows([]);setConfirmed(false);try{const extracted=await readStatementFile(file,setError,protectedReader),parsed=parseStatement(extracted.text,extracted.format,selected?.closing_date??'');setName(file.name);setHash(extracted.hash);setMetadata(parsed.metadata);setWarnings([...parsed.warnings,...(history.some(h=>h.file_hash===extracted.hash&&h.status!=='undone')?['Este arquivo já foi importado. Consulte o histórico; não importe novamente.']:[])]);setRows(parsed.rows.map(r=>compareRow(r,data,card.id)));setError('')}catch(e){setError(String(e))}finally{setBusy(false)}}}/><p>{name}</p>{Object.entries(metadata).filter(([,v])=>v).map(([k,v])=><p key={k}>{{cycle:'Competência identificada',institution:'Instituição',due:'Vencimento',closing:'Fechamento',total:'Total',holder:'Titular'}[k]??k}: {v}</p>)}{warnings.map(w=><p key={w} role="status">{w}</p>)}
- {rows.length>0&&<><div className="button-row" role="group" aria-label="Seleção em lote"><button type="button" disabled={busy} onClick={()=>setSelectedRows(rows.map((_,i)=>i))}>Marcar todos</button><button type="button" disabled={busy} onClick={()=>setSelectedRows([])}>Desmarcar todos</button></div><p role="status">{selectedRows.length} de {rows.length} lançamentos marcados.</p><label>Ação em lote<select value="" disabled={busy||!selectedRows.length} onChange={e=>{const decision=e.target.value as StatementRow['decision'];if(decision){setRows(old=>old.map((r,i)=>selectedRows.includes(i)?{...r,decision}:r));setConfirmed(false)}}}><option value="">Escolha</option><option value="skip">Descartar selecionados</option><option value="new">Importar selecionados como novos (revisar)</option></select></label><p className="muted">A ação em lote será aplicada somente aos itens marcados.</p>{rows.map((r,n)=><fieldset key={n} className="credit-invoice"><legend>{r.comparison}</legend><label className="check"><input type="checkbox" checked={selectedRows.includes(n)} disabled={busy} onChange={e=>{const checked=e.target.checked;setSelectedRows(old=>checked?[...old,n]:old.filter(i=>i!==n))}}/>Selecionar para ação em lote</label><small>Original: {r.original}</small><label>Descrição<input value={r.description} onChange={e=>update(n,{description:e.target.value})}/></label><label>Data da compra<input type="date" value={r.date} onChange={e=>update(n,{date:e.target.value})}/></label><label>Valor da parcela/lançamento<input type="number" step=".01" value={Number.isFinite(r.amount)?r.amount:''} onChange={e=>update(n,{amount:Number(e.target.value)})}/></label><label>Categoria<input value={r.category} onChange={e=>update(n,{category:e.target.value})}/></label><label>Tipo<select value={r.kind} onChange={e=>update(n,{kind:e.target.value as StatementRow['kind']})}>{['purchase','refund','credit','fee','payment'].map((v,i)=><option key={v} value={v}>{['Compra','Estorno','Crédito','Tarifa / encargos','Pagamento anterior'][i]}</option>)}</select></label><div className="form-grid"><label>Forma da compra<select value={r.count===1?'single':'installments'} onChange={e=>update(n,{count:e.target.value==='single'?1:2,installment:1})}><option value="single">À vista</option><option value="installments">Parcelada</option></select></label><label>Parcela atual<input type="number" min="1" value={r.installment} onChange={e=>update(n,{installment:Number(e.target.value)})}/></label><label>Quantidade total de parcelas<input type="number" min="1" max="120" value={r.count} onChange={e=>update(n,{count:Number(e.target.value)})}/></label></div>{r.kind==='purchase'&&r.count>1&&<label>Valor total original confirmado<input type="number" min=".01" step=".01" required value={r.total_amount??''} onChange={e=>update(n,{total_amount:e.target.value===''?null:Number(e.target.value)})}/><small>Informe o total real; não será presumido multiplicando a parcela.</small></label>}<label>Correspondência<select value={r.match_id} onChange={e=>update(n,{match_id:e.target.value})}><option value="">Nenhuma</option>{data.lines.filter(l=>l.card_id===card.id).map(l=><option key={l.id} value={l.id}>{l.title} · {l.installment} · {brl(Number(l.amount))}</option>)}</select></label><label>Decisão explícita<select value={r.decision} onChange={e=>update(n,{decision:e.target.value as StatementRow['decision']})}><option value="">Revisar</option><option value="new">Importar como novo</option><option value="link">Manter / vincular ao existente</option><option value="skip">Descartar</option></select></label></fieldset>)}{target!==null&&<label className="check"><input type="checkbox" checked={keep} onChange={e=>setKeep(e.target.checked)}/>Reconciliar o complemento anterior, mantendo o total informado de {brl(target)}. A diferença será lançada como ajuste auditável.</label>}<label className="check"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>Conferi competência, valores, parcelas e decisões, inclusive possíveis duplicidades.</label><button disabled={busy||!confirmed||rows.some(r=>!r.decision||(r.decision==='new'&&r.kind==='purchase'&&(!r.total_amount||r.installment<1||r.installment>r.count||r.count>120)))||!selected} onClick={()=>{const suspect=rows.some((r,n)=>r.decision==='new'&&(r.comparison!=='Novo lançamento'||rows.some((other,i)=>i<n&&other.decision==='new'&&r.description.trim().toLocaleLowerCase('pt-BR')===other.description.trim().toLocaleLowerCase('pt-BR')&&r.date===other.date&&r.amount===other.amount&&r.installment===other.installment)));if(suspect&&!window.confirm('Há lançamentos suspeitos, divergentes ou já cadastrados marcados como novos. Conferiu cada um e deseja continuar?'))return;void save('import_statement',{rows,confirmed:true,confirm_duplicates:suspect,keep_target:keep,file_hash:hash,file_name:name,metadata})}}>Confirmar importação</button></>}
- </section><ImportHistory db={db} household={household} data={data} cardId={card.id} reload={reload} onChange={loadHistory}/>{error&&<p role="alert">{error}</p>}<button disabled={busy} onClick={onClose}>Fechar</button></dialog>;
+
+type Props = {db: SupabaseClient; household: string; data: CreditData; card: Card; categories?: {name: string; kind: string; active: boolean}[]; reload: () => Promise<void>; onClose: () => void};
+
+const GROUPS: {id: ImportGroup; title: string; hint: string; open: boolean}[] = [
+  {id: 'revisar', title: 'Precisam da sua decisão', hint: 'Possíveis duplicados ou dados incompletos.', open: true},
+  {id: 'avista', title: 'À vista, encargos e estornos', hint: 'Serão lançados um a um.', open: true},
+  {id: 'parcela-nova', title: 'Parcelamentos novos', hint: 'Lança a parcela desta fatura e as seguintes.', open: true},
+  {id: 'existente', title: 'Já lançados', hint: 'Não serão lançados de novo.', open: false},
+  {id: 'ignorado', title: 'Ignorados', hint: 'Pagamentos da fatura anterior.', open: false},
+];
+const KINDS: [StatementRow['kind'], string][] = [['purchase', 'Compra'], ['fee', 'Encargo / IOF'], ['refund', 'Estorno'], ['credit', 'Crédito'], ['payment', 'Pagamento anterior']];
+
+export default function StatementTools({db, household, data, card, categories = [], reload, onClose}: Props) {
+  const dialog = useRef<HTMLDialogElement>(null), lock = useRef(false), requestId = useRef(''), passwordReply = useRef<((v: {password: string; save: boolean} | null) => void) | null>(null);
+  const root = rootCard(data.cards, card);
+  const invoices = useMemo(() => data.invoices.filter(i => i.card_id === root.id).sort((a, b) => b.cycle.localeCompare(a.cycle)), [data.invoices, root.id]);
+  const [draft, setDraft] = useState<ImportDraft | null>(null);
+  const [busy, setBusy] = useState(false), [progress, setProgress] = useState(''), [error, setError] = useState(''), [done, setDone] = useState('');
+  const [editing, setEditing] = useState<number | null>(null);
+  const [passwordNeeded, setPasswordNeeded] = useState(false), [password, setPassword] = useState(''), [savePassword, setSavePassword] = useState(false);
+  const [history, setHistory] = useState<{file_hash?: string; status?: string}[]>([]);
+
+  useEffect(() => {dialog.current?.showModal(); void loadHistory()}, []);
+  async function loadHistory() {const r = await db.from('cc_imports').select('file_hash,status').eq('card_id', card.id); if (!r.error) setHistory(r.data ?? [])}
+
+  const options = useMemo(() => draft ? referenceOptions(invoices, root, draft.suggestedCycle) : [], [draft?.suggestedCycle, invoices, root]);
+  const selected = options.find(o => o.cycle === draft?.cycle) ?? (draft ? {cycle: draft.cycle, label: cycleLabel(draft.cycle), closing: '', due: '', invoice: invoices.find(i => i.cycle === draft.cycle)} : undefined);
+  const totals = draft ? importTotals(draft.rows, data, selected?.invoice, draft.header.total) : null;
+  const waiting = draft ? pending(draft.rows) : [];
+  const newCount = draft?.rows.filter(r => r.decision === 'new').length ?? 0;
+  const duplicateFile = draft ? history.some(h => h.file_hash === draft.hash && h.status !== 'undone') : false;
+
+  async function protectedReader(file: File) {
+    const token = (await db.auth.getSession()).data.session?.access_token;
+    if (!token) throw new Error('Entre novamente para abrir o PDF protegido.');
+    let supplied: {password: string; save: boolean} | null = {password: '', save: false};
+    while (supplied) {
+      const body = new FormData(); body.set('file', file); body.set('card', card.id); body.set('password', supplied.password); body.set('save', String(supplied.save));
+      const response = await fetch('/api/statements/unlock', {method: 'POST', headers: {Authorization: 'Bearer ' + token}, body, cache: 'no-store'});
+      const result = await response.json();
+      if (result.needsPassword) {
+        setSavePassword(Boolean(result.hasSaved)); setPassword(''); setPasswordNeeded(true);
+        supplied = await new Promise(resolve => {passwordReply.current = resolve});
+        setPasswordNeeded(false); continue;
+      }
+      if (!response.ok) throw new Error(result.error ?? 'Não foi possível abrir o PDF.');
+      return recognizeProtectedPages(result.pages);
+    }
+    throw new Error('Leitura cancelada.');
+  }
+
+  async function read(file: File) {
+    setBusy(true); setError(''); setDone(''); setDraft(null); setEditing(null);
+    try {
+      const extracted = await readStatementFile(file, setProgress, protectedReader);
+      const header = readHeader(extracted.text);
+      const suggestion = suggestReference(invoices, root, header, today());
+      const reference = header.closing || invoices.find(i => i.cycle === suggestion.cycle)?.closing_date || '';
+      const parsed = parseStatement(extracted.text, extracted.format, reference);
+      if (!parsed.rows.length) throw new Error('Nenhum lançamento reconhecido neste arquivo. Se for um PDF escaneado, tente novamente; se persistir, use o CSV do banco.');
+      requestId.current = crypto.randomUUID();
+      setDraft({fileName: file.name, hash: extracted.hash, header, rows: classifyRows(parsed.rows, data, card.id), cycle: suggestion.cycle, suggestedCycle: suggestion.cycle, reason: suggestion.reason, adjust: header.total !== null});
+    } catch (e) {setError(errorMessage(e))} finally {setBusy(false); setProgress('')}
+  }
+
+  function updateRow(n: number, patch: Partial<ImportRow>) {
+    requestId.current = crypto.randomUUID();
+    setDraft(d => d && {...d, rows: d.rows.map((r, i) => {
+      if (i !== n) return r;
+      const row = {...r, ...patch};
+      if (patch.count !== undefined || patch.amount !== undefined) row.total_amount = row.count === 1 ? Math.abs(row.amount) : Math.round(Math.abs(row.amount) * 100) * row.count / 100;
+      if (patch.decision === 'new' && row.group === 'revisar') row.note = 'Você decidiu lançar mesmo assim.';
+      return row;
+    })});
+  }
+
+  async function confirm() {
+    if (!draft || lock.current) return;
+    const summary = `Importar ${newCount} lançamento(s) na fatura de ${cycleLabel(draft.cycle)}?` + (draft.adjust && totals?.adjustment ? `\nAjuste para o total do PDF: ${brl(totals.adjustment)}.` : '') + '\nVocê poderá desfazer pelo histórico de importações.';
+    if (!window.confirm(summary)) return;
+    lock.current = true; setBusy(true); setError('');
+    try {
+      const payload = importPayload(draft, card.id, selected?.invoice);
+      const r = await db.rpc('cc_action', {p_id: requestId.current, p_household: household, p_action: 'import_statement', p_data: payload});
+      if (r.error) {await db.rpc('record_cc_import_error', {p_household: household, p_data: {file_name: draft.fileName, error: r.error.message}}); throw r.error}
+      await reload(); await loadHistory();
+      setDone(`Importação concluída: ${r.data?.imported ?? newCount} lançado(s), ${r.data?.linked ?? 0} já existente(s) na fatura de ${cycleLabel(draft.cycle)}.`);
+      setDraft(null);
+    } catch (e) {setError(errorMessage(e))} finally {lock.current = false; setBusy(false)}
+  }
+
+  const rowView = (r: ImportRow, n: number) => (
+    <li key={n} className={'import-row' + (r.decision === '' ? ' needs-decision' : '')}>
+      <div className="import-row-main">
+        <span className="import-date">{dateBR(r.date).slice(0, 5) || '??/??'}</span>
+        <span className="import-desc">{r.description}{r.count > 1 && <em> {r.installment}/{r.count}</em>}{r.note && <small>{r.note}</small>}</span>
+        <strong className={r.amount < 0 ? 'positive' : ''}>{brl(r.amount)}</strong>
+      </div>
+      <div className="import-row-actions">
+        <select aria-label={'Decisão para ' + r.description} value={r.decision} onChange={e => updateRow(n, {decision: e.target.value as ImportRow['decision']})}>
+          <option value="">Decidir…</option>
+          <option value="new">Lançar</option>
+          {r.match_id && <option value="link">Já existe (não lançar)</option>}
+          <option value="skip">Ignorar</option>
+        </select>
+        <button type="button" className="link-button" onClick={() => setEditing(editing === n ? null : n)}>{editing === n ? 'Fechar' : 'Editar'}</button>
+      </div>
+      {editing === n && <div className="form-grid import-editor">
+        <label>Descrição<input value={r.description} maxLength={200} onChange={e => updateRow(n, {description: e.target.value})}/></label>
+        <label>Data da compra<input type="date" max={today()} value={r.date} onChange={e => updateRow(n, {date: e.target.value})}/></label>
+        <label>Valor nesta fatura<input type="number" step=".01" value={Number.isFinite(r.amount) ? r.amount : ''} onChange={e => updateRow(n, {amount: Number(e.target.value)})}/></label>
+        <label>Categoria<input list="import-categories" value={r.category} maxLength={100} onChange={e => updateRow(n, {category: e.target.value})}/></label>
+        <label>Tipo<select value={r.kind} onChange={e => updateRow(n, {kind: e.target.value as ImportRow['kind']})}>{KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
+        <label>Parcela<span className="inline-pair"><input aria-label="Parcela atual" type="number" min="1" max="120" value={r.installment} onChange={e => updateRow(n, {installment: Number(e.target.value)})}/> de <input aria-label="Total de parcelas" type="number" min="1" max="120" value={r.count} onChange={e => updateRow(n, {count: Number(e.target.value)})}/></span></label>
+        {r.kind === 'purchase' && r.count > 1 && <label>Valor total da compra<input type="number" step=".01" min=".01" value={r.total_amount ?? ''} onChange={e => updateRow(n, {total_amount: e.target.value === '' ? null : Number(e.target.value), estimated: false})}/>{r.estimated && <small>Estimado: parcela × {r.count}. Ajuste se souber o total exato.</small>}</label>}
+      </div>}
+    </li>
+  );
+
+  return <dialog className="account-dialog statement-dialog" ref={dialog} aria-label="Importar fatura" onCancel={e => {if (busy) e.preventDefault(); else onClose()}}>
+    <header className="import-header"><h2>Importar fatura · {card.name}</h2><button type="button" className="link-button" disabled={busy} onClick={onClose}>Fechar</button></header>
+    <datalist id="import-categories">{categories.filter(c => c.kind === 'expense' && c.active).map(c => <option key={c.name} value={c.name}/>)}<option value="Encargos"/></datalist>
+
+    {!draft && <section className="import-pick">
+      <label className="file-drop">
+        <span>{busy ? (progress || 'Lendo arquivo…') : 'Escolha o PDF da fatura'}</span>
+        <small>PDF (com ou sem senha), CSV ou OFX. Nada é gravado antes da sua confirmação.</small>
+        <input aria-label="Arquivo da fatura" type="file" accept=".pdf,.csv,.ofx" disabled={busy} onChange={e => {const f = e.target.files?.[0]; e.target.value = ''; if (f) void read(f)}}/>
+      </label>
+      {passwordNeeded && <form className="import-password" onSubmit={e => {e.preventDefault(); passwordReply.current?.({password, save: savePassword}); setPassword('')}}>
+        <h3>PDF protegido</h3>
+        <label>Senha do PDF<input type="password" autoFocus autoComplete="off" value={password} onChange={e => setPassword(e.target.value)}/></label>
+        <label className="check"><input type="checkbox" checked={savePassword} onChange={e => setSavePassword(e.target.checked)}/>Lembrar a senha deste cartão (fica criptografada)</label>
+        <div className="button-row"><button disabled={!password}>Abrir</button><button type="button" onClick={() => passwordReply.current?.(null)}>Cancelar</button></div>
+      </form>}
+      {done && <p role="status" className="import-done">{done}</p>}
+    </section>}
+
+    {draft && totals && <section className="import-review">
+      <p className="muted">{draft.header.bankLabel} · {draft.fileName}{draft.header.last4 && ' · final ' + draft.header.last4}</p>
+      {duplicateFile && <p role="alert">Este arquivo já foi importado neste cartão. Consulte o histórico abaixo.</p>}
+
+      <label className="import-reference">Fatura de referência
+        <select value={draft.cycle} onChange={e => {requestId.current = crypto.randomUUID(); setDraft({...draft, cycle: e.target.value})}}>
+          {options.map(o => <option key={o.cycle} value={o.cycle}>{o.label}{o.cycle === draft.suggestedCycle ? ' (sugerida)' : ''}</option>)}
+        </select>
+        <small>{draft.cycle === draft.suggestedCycle ? 'Sugerida ' + draft.reason + '.' : 'Você trocou a sugestão (' + cycleLabel(draft.suggestedCycle) + ').'}{draft.header.due && selected?.due && selected.due !== draft.header.due && ` O PDF vence em ${dateBR(draft.header.due)}; esta fatura vence em ${dateBR(selected.due)} no app.`}</small>
+      </label>
+
+      <div className="import-totals">
+        <div><span>Itens do PDF</span><strong>{brl(totals.items)}</strong></div>
+        <div><span>Total impresso no PDF</span><strong>{totals.statementTotal === null ? '—' : brl(totals.statementTotal)}</strong></div>
+        <div><span>Fatura no app após importar</span><strong>{brl(totals.after)}</strong></div>
+        <div className={totals.adjustment ? 'has-difference' : 'no-difference'}><span>Diferença</span><strong>{totals.adjustment === null ? '—' : brl(totals.adjustment)}</strong></div>
+      </div>
+      {totals.adjustment !== null && totals.adjustment !== 0 && <label className="check import-adjust"><input type="checkbox" checked={draft.adjust} onChange={e => {requestId.current = crypto.randomUUID(); setDraft({...draft, adjust: e.target.checked})}}/>Ajustar a fatura para {brl(totals.statementTotal ?? 0)} (lança “{totals.adjustment > 0 ? 'Complemento' : 'Redução'} de Fatura” de {brl(totals.adjustment)}, desfeito junto com a importação)</label>}
+      {totals.pdfDifference !== null && totals.pdfDifference !== 0 && <p className="muted">Os itens lidos somam {brl(totals.items)} e o PDF informa {brl(totals.statementTotal ?? 0)}. A diferença pode ser saldo anterior, pagamento parcial ou uma linha não reconhecida.</p>}
+
+      {GROUPS.map(g => {const list = draft.rows.map((r, n) => [r, n] as const).filter(([r]) => r.group === g.id); return list.length > 0 && <details key={g.id} className={'import-group group-' + g.id} open={g.open}>
+        <summary><b>{g.title}</b> <span className="count">{list.length}</span> <small>{g.hint}</small></summary>
+        <ul>{list.map(([r, n]) => rowView(r, n))}</ul>
+      </details>})}
+      {totals.onlyInSystem.length > 0 && <details className="import-group"><summary><b>Só no app, nesta fatura</b> <span className="count">{totals.onlyInSystem.length}</span> <small>Lançamentos do app que não aparecem no PDF. Nada será alterado neles.</small></summary>
+        <ul>{totals.onlyInSystem.map(l => <li key={l.id} className="import-row"><div className="import-row-main"><span className="import-date">{dateBR(l.charge_date).slice(0, 5)}</span><span className="import-desc">{l.title}</span><strong>{brl(Number(l.amount))}</strong></div></li>)}</ul>
+      </details>}
+
+      <footer className="import-footer">
+        {waiting.length > 0 && <p role="status">Falta decidir {waiting.length} item(ns).</p>}
+        <div className="button-row">
+          <button disabled={busy || waiting.length > 0 || duplicateFile || (newCount === 0 && !draft.adjust)} onClick={() => void confirm()}>{busy ? 'Importando…' : `Importar ${newCount} lançamento(s)`}</button>
+          <button type="button" disabled={busy} onClick={() => setDraft(null)}>Escolher outro arquivo</button>
+        </div>
+      </footer>
+    </section>}
+    {error && <p role="alert" className="payment-error">{error}</p>}
+
+    {!draft && <ManualAdjust db={db} household={household} data={data} invoices={invoices} reload={reload}/>}
+    {!draft && <details className="import-history-box"><summary>Histórico de importações</summary><ImportHistory db={db} household={household} data={data} cardId={card.id} reload={reload} onChange={loadHistory}/></details>}
+  </dialog>;
+}
+
+/** Ajuste manual do total de uma fatura (sem importar arquivo). */
+function ManualAdjust({db, household, data, invoices, reload}: {db: SupabaseClient; household: string; data: CreditData; invoices: CreditData['invoices']; reload: () => Promise<void>}) {
+  const closed = invoices.filter(i => i.closing_date <= today());
+  const [invoice, setInvoice] = useState(closed[0]?.id ?? invoices[0]?.id ?? ''), [total, setTotal] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const keys = useRef(new Map<string, string>());
+  const selected = invoices.find(i => i.id === invoice), current = selected ? invoiceTotals(selected, data.lines).total : 0;
+  async function save(action: 'adjust_invoice' | 'reverse_adjustment', payload: Record<string, unknown>, question: string) {
+    if (!selected || !window.confirm(question)) return;
+    const p = {invoice_id: selected.id, revision: selected.revision, ...payload}, signature = JSON.stringify([action, p]);
+    let id = keys.current.get(signature); if (!id) {id = crypto.randomUUID(); keys.current.set(signature, id)}
+    setBusy(true); setError('');
+    try {const r = await db.rpc('cc_action', {p_id: id, p_household: household, p_action: action, p_data: p}); if (r.error) throw r.error; setTotal(''); await reload()} catch (e) {setError(errorMessage(e))} finally {setBusy(false)}
+  }
+  return <details className="manual-adjust"><summary>Ajustar o total de uma fatura manualmente</summary>
+    <div className="form-grid">
+      <label>Fatura<select value={invoice} onChange={e => setInvoice(e.target.value)}>{invoices.map(i => <option key={i.id} value={i.id}>{cycleLabel(i.cycle)} · vence {dateBR(i.due_date)}</option>)}</select></label>
+      <label>Total correto<input type="number" step=".01" value={total} placeholder={String(current)} onChange={e => setTotal(e.target.value)}/></label>
+    </div>
+    <p className="muted">No app: {brl(current)}{total !== '' && ` → ajuste de ${brl(Number(total) - current)}`}. Compras e pagamentos não mudam.</p>
+    <button disabled={busy || !selected || total === ''} onClick={() => void save('adjust_invoice', {total: Number(total)}, 'Lançar ajuste de ' + brl(Number(total) - current) + ' nesta fatura?')}>Lançar ajuste</button>
+    {data.lines.filter(l => l.invoice_id === invoice && l.line_type === 'adjustment').map(l => <p key={l.id} className="transaction"><span>{l.title} · {brl(Number(l.amount))}</span><button disabled={busy} onClick={() => void save('reverse_adjustment', {line_id: l.id}, 'Reverter este ajuste com um lançamento compensatório?')}>Reverter</button></p>)}
+    {error && <p role="alert">{error}</p>}
+  </details>;
 }

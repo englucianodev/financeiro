@@ -2,9 +2,9 @@ import type {CreditData} from './credit';
 export type StatementRow={original:string;description:string;date:string;amount:number;category:string;installment:number;count:number;total_amount:number|null;bank_id:string;kind:'purchase'|'refund'|'fee'|'credit'|'payment';decision:''|'new'|'link'|'skip';match_id:string;comparison:string};
 export function money(text:string){let s=text.replace(/R\$|\s/g,'').replace(/[()]/g,'');if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');const n=Number(s);return Number.isFinite(n)?Math.round(n*100)/100:NaN}
 export function statementDate(s:string){s=s.trim();if(/^\d{8,}/.test(s))s=s.slice(0,4)+'-'+s.slice(4,6)+'-'+s.slice(6,8);else if(/^\d{2}\/\d{2}\/\d{4}$/.test(s))s=s.split('/').reverse().join('-');if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return '';const d=new Date(s+'T12:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===s?s:''}
-const normal=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+export const normal=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const installmentSuffix=/(?:\s*[-–—:|]\s*|\s+)(?:[\[(]\s*)?(?:parc(?:ela(?:mento)?)?s?\.?\s*:?\s*)?(\d{1,3})\s*(?:\/|de)\s*(\d{1,3})\s*[\])]?\s*$/i;
-const cleanDescription=(s:string)=>s.replace(installmentSuffix,'').trim()||s.trim();
+export const cleanDescription=(s:string)=>s.replace(installmentSuffix,'').trim()||s.trim();
 export const installmentTotal=(amount:number,count:number)=>Math.round(Math.abs(amount)*100)*count/100;
 export function makeRow(description:string,date:string,amount:number,bank_id='',type=''):StatementRow{
  const part=description.match(installmentSuffix)??description.match(/(?:parc\s*)?\b(\d{1,3})\s*\/\s*(\d{1,3})\b/i),count=part?Number(part[2]):1,installment=part?Number(part[1]):1;
