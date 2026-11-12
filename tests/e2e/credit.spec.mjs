@@ -187,3 +187,18 @@ test('fatura do cartão separa à vista e parceladas e permite trocar a categori
  await parc.getByRole('button',{name:'Editar Notebook'}).click();const d=page.getByRole('dialog',{name:'Editar lançamento do cartão'});await d.getByLabel('Categoria').selectOption('Lazer');await expect(d.getByRole('checkbox',{name:/todas as parcelas/})).toBeChecked();
  const request=page.waitForRequest(r=>r.url().endsWith('/cc_action'));await d.getByRole('button',{name:'Salvar categoria'}).click();expect((await request).postDataJSON()).toMatchObject({p_action:'set_category',p_data:{line_id:'l10',category:'Lazer',scope:'purchase'}});
 });
+test('muda a categoria de vários lançamentos do cartão de uma vez (à vista e parcelados)',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const state=fixture();
+ state.cc_purchases.push({id:'p10',card_id:'c1',responsible_id:bruno,title:'Notebook',category:'Casa',amount:1000,charge_date:date(),installments:10,next_installment:1,obligation_id:null},{id:'p11',card_id:'c1',responsible_id:bruno,title:'Padaria',category:'Casa',amount:20,charge_date:date(),installments:1,next_installment:1,obligation_id:null});
+ state.cc_lines.push({id:'l10',card_id:'c1',invoice_id:'inv',purchase_id:'p10',responsible_id:bruno,title:'Notebook',category:'Casa',amount:100,paid:0,line_type:'principal',installment:1,charge_date:date()},{id:'l11',card_id:'c1',invoice_id:'inv',purchase_id:'p11',responsible_id:bruno,title:'Padaria',category:'Casa',amount:20,paid:0,line_type:'principal',installment:1,charge_date:date()});
+ const calls=[];page.on('request',r=>{if(r.url().endsWith('/cc_action')&&r.postDataJSON()?.p_action==='set_category')calls.push(r.postDataJSON())});
+ await seed(page,state);await openCards(page);await page.locator('#credit-module article').filter({hasText:'Nubank'}).getByRole('button',{name:'Ver fatura'}).click();
+ await page.getByRole('button',{name:'Mudar categoria de várias'}).click();
+ const bar=page.getByRole('region',{name:'Lançamentos selecionados'});await expect(bar.getByRole('button',{name:'Mudar categoria'})).toBeDisabled();
+ await page.getByRole('checkbox',{name:'Selecionar todas · À vista'}).check();await page.getByRole('checkbox',{name:'Selecionar Notebook'}).check();await page.getByRole('checkbox',{name:'Selecionar Padaria'}).uncheck();
+ await expect(bar).toContainText('2 selecionados');await expect(page.locator('body')).toHaveJSProperty('scrollWidth',390);await page.screenshot({path:'test-results/cartao-varias-mobile.png',fullPage:true});
+ await bar.getByRole('button',{name:'Mudar categoria'}).click();const d=page.getByRole('dialog',{name:'Mudar categoria de vários lançamentos'});
+ await expect(d.getByRole('checkbox',{name:/todas as parcelas/})).toBeChecked();await d.getByLabel('Nova categoria').selectOption('Lazer');await d.getByRole('button',{name:'Aplicar a 2'}).click();await expect(d).toBeHidden();
+ expect(calls.map(c=>c.p_data).sort((a,b)=>a.line_id.localeCompare(b.line_id))).toEqual([{line_id:'l10',category:'Lazer',scope:'purchase'},{line_id:'line',category:'Lazer',scope:'purchase'}]);
+ expect(new Set(calls.map(c=>c.p_id)).size).toBe(2);await expect(page.getByRole('region',{name:'Lançamentos selecionados'})).toHaveCount(0);
+});

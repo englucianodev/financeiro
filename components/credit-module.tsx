@@ -6,7 +6,7 @@ import ImportHistory from './import-history';
 import Donut from './donut';
 import {CreditCard as CardIcon,Plus,ArrowLeft,ChevronRight} from 'lucide-react';
 import MonthNav from './month-nav';
-import {CardDetail,LineEditor} from './card-view';
+import {CardDetail,LineEditor,BulkCategoryEditor} from './card-view';
 import {brl,today} from '@/lib/money';
 import {type ViewAccount,type ViewEvent,monthLabel,moveMonth} from '@/lib/finance-view';
 import {type Card,type CreditData,type Invoice,type Line,cardLimit,invoiceTotals,cardCategorySummary,rootCard,creditStatus,invoiceMonth,cycleToDueMonth,dueMonthToCycle} from '@/lib/credit';
@@ -88,7 +88,7 @@ function InvoiceOperationDialog({operation,onClose,...props}:Common&{operation:O
 export function operationForEvent(event:ViewEvent):Operation|null{return event.source==='cc_charge'&&event.linked_purchase_id?{action:'edit_purchase',purchase_id:event.linked_purchase_id}:event.source==='cc_invoice'?{action:'pay_invoice',invoice_id:event.source_id}:event.source==='cc_obligation'?{action:event.card_mode==='manual'?'confirm_obligation':'edit_obligation',obligation_id:event.source_id}:null}
 
 export default function CreditPanel(props:Common&{categories:Category[];moduleError?:string}){
- const {data,members,moduleError}=props,[editing,setEditing]=useState<Card|null|undefined>(undefined),[selected,setSelected]=useState(''),[operation,setOperation]=useState<Operation|null>(null),[tab,setTab]=useState<'cards'|'history'>('cards'),[showArchived,setShowArchived]=useState(false),[statement,setStatement]=useState<Card|null>(null),[lineEdit,setLineEdit]=useState<Line|null>(null);
+ const {data,members,moduleError}=props,[editing,setEditing]=useState<Card|null|undefined>(undefined),[selected,setSelected]=useState(''),[operation,setOperation]=useState<Operation|null>(null),[tab,setTab]=useState<'cards'|'history'>('cards'),[showArchived,setShowArchived]=useState(false),[statement,setStatement]=useState<Card|null>(null),[lineEdit,setLineEdit]=useState<Line|null>(null),[bulk,setBulk]=useState<{lines:Line[];done:()=>void}|null>(null);
  const card=data.cards.find(c=>c.id===selected);
  const visible=data.cards.filter(c=>showArchived||c.card_status!=='archived');
  const pending=data.obligations.filter(o=>o.state==='pending'&&o.mode==='manual');
@@ -96,7 +96,7 @@ export default function CreditPanel(props:Common&{categories:Category[];moduleEr
   <div className="section-heading"><h2>Cartões de crédito</h2>{!card&&<button className="btn sm" onClick={()=>setEditing(null)} disabled={Boolean(moduleError)}><Plus size={15}/>Novo cartão</button>}</div>
   {moduleError?<p role="alert">{moduleError}</p>:<>
   {!card&&<nav className="ccv-tabs" aria-label="Área de cartões"><button aria-pressed={tab==='cards'} onClick={()=>setTab('cards')}>Cartões e faturas</button><button aria-pressed={tab==='history'} onClick={()=>setTab('history')}>Recorrências e histórico</button></nav>}
-  {tab==='cards'&&card&&<CardDetail card={card} data={data} members={members} accounts={props.accounts} legacy={props.legacy} onBack={()=>setSelected('')} onEditCard={()=>setEditing(card)} onImport={()=>setStatement(card)} onOperation={setOperation} onEditLine={setLineEdit}/>}
+  {tab==='cards'&&card&&<CardDetail card={card} data={data} members={members} accounts={props.accounts} legacy={props.legacy} onBack={()=>setSelected('')} onEditCard={()=>setEditing(card)} onImport={()=>setStatement(card)} onOperation={setOperation} onEditLine={setLineEdit} onBulkCategory={(lines,done)=>setBulk({lines,done})}/>}
   {tab==='cards'&&!card&&<>
    <div className="ccv-grid">{visible.map(c=>{const limit=cardLimit(data,c,props.legacy??[]),inv=currentInvoice(data,rootCard(data.cards,c)),t=inv?invoiceTotals(inv,data.lines):null;return <article key={c.id} className="ccv-tile" style={{borderTopColor:c.color??undefined}}>
     <header><h3><CardIcon size={17}/>{c.name}</h3><span className="ccv-owner">{members.find(m=>m.user_id===c.owner_id)?.display_name}{c.card_status!=='active'&&' · '+(c.card_status==='archived'?'arquivado':'bloqueado')}</span></header>
@@ -118,6 +118,7 @@ export default function CreditPanel(props:Common&{categories:Category[];moduleEr
   {statement&&<StatementTools {...props} card={statement} onClose={()=>setStatement(null)}/>}
   {editing!==undefined&&<CardEditor {...props} card={editing} onClose={()=>setEditing(undefined)}/>}
   {operation&&<CreditOperationDialog key={JSON.stringify(operation)} {...props} operation={operation} onClose={()=>setOperation(null)}/>}
+  {bulk&&<BulkCategoryEditor db={props.db} household={props.household} data={data} lines={bulk.lines} categories={props.categories} reload={props.reload} onClose={()=>setBulk(null)} onDone={bulk.done}/>}
   {lineEdit&&<LineEditor db={props.db} household={props.household} data={data} line={lineEdit} categories={props.categories} reload={props.reload} onClose={()=>setLineEdit(null)} onEditPurchase={id=>setOperation({action:'edit_purchase',purchase_id:id})}/>}
  </section>;
 }

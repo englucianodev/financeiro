@@ -621,3 +621,20 @@ button.card-link:focus-visible{outline:2px solid var(--accent);outline-offset:3p
 .card-detail-lines h4{font-size:var(--t-16);display:flex;align-items:center;gap:8px}
 .property-grid+form,.card>p.muted+form{margin-top:12px;padding-top:16px;border-top:1px solid var(--line)}
 .import-cat{color:var(--muted)}.import-cat b{color:var(--ink);font-weight:600}
+
+/* Cartão: mudar a categoria de vários lançamentos */
+.ccv-select-bar{display:flex;justify-content:flex-end}
+.ccv-select-bar .btn{display:inline-flex;align-items:center;gap:6px}
+label.ccv-line.ccv-pick{cursor:pointer}
+label.ccv-line.ccv-pick input{width:20px;height:20px;accent-color:var(--accent);flex:none;margin:0}
+label.ccv-line.ccv-pick.on{background:var(--accent-soft)}
+.ccv-pick-all{width:18px;height:18px;margin-right:8px;accent-color:var(--accent);vertical-align:-3px}
+.ccv-bulk{position:sticky;bottom:calc(76px + env(safe-area-inset-bottom));z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px 10px 16px;background:var(--panel);border:1px solid var(--accent);border-radius:var(--r-md);box-shadow:var(--shadow)}
+.ccv-bulk-list{display:grid;gap:4px;margin:4px 0 8px;font-size:var(--t-13)}
+.ccv-bulk-list li{display:flex;justify-content:space-between;gap:10px}
+.ccv-bulk-list small{color:var(--muted)}
+#credit-module label.ccv-line.ccv-pick{grid-template-columns:22px 44px minmax(0,1fr) auto auto}
+@media(max-width:760px){#credit-module label.ccv-line.ccv-pick{grid-template-columns:22px 40px minmax(0,1fr) auto}#credit-module label.ccv-line.ccv-pick input{grid-row:1/span 2}#credit-module label.ccv-line.ccv-pick .ccv-parc{grid-column:3;grid-row:2}#credit-module label.ccv-line.ccv-pick .ccv-amount{grid-column:4;grid-row:1}}
+#credit-module .ccv-line:disabled{opacity:.6;cursor:default}
+@media(max-width:760px){.ccv-bulk{margin-right:72px}}
+.ccv-bulk span,.ccv-bulk .btn{white-space:nowrap}
