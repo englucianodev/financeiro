@@ -10,7 +10,7 @@ type ImportRecord = {id: string; card_id: string; invoice_id: string; file_name:
   summary: {identified?: number; imported?: number; linked?: number; total?: number; statement_total?: number | null; adjustment?: number | null; rows?: {amount: number; decision: string}[]}};
 type Impact = {import_id: string; safe: boolean; reasons: string[]; warnings?: string[]; needs_confirmation?: boolean; orphan?: boolean; legacy?: boolean; remaining?: number;
   created_lines: number; created_purchases: number; linked_lines: number; invoice_ids: string[]; bank_delta: number};
-type Action = 'preview_undo_import' | 'undo_import' | 'adopt_legacy_import' | 'force_clear_import';
+type Action = 'preview_undo_import' | 'undo_import' | 'adopt_legacy_import' | 'force_clear_import' | 'delete_import_history';
 
 export default function ImportHistory({db, household, data, cardId, reload, onChange}: {db: SupabaseClient; household: string; data: CreditData; cardId?: string; reload: () => Promise<void>; onChange?: () => Promise<void>}) {
   const [history, setHistory] = useState<ImportRecord[]>([]), [listError, setListError] = useState(''), [busy, setBusy] = useState(false);
@@ -34,13 +34,13 @@ export default function ImportHistory({db, household, data, cardId, reload, onCh
       if (action === 'preview_undo_import' || action === 'adopt_legacy_import') {setPreview(r.data as Impact); setAccept(false)}
       else {
         setPreview(null); setOpen(null);
-        setNotice(action === 'force_clear_import' ? 'Importação retirada do histórico ativo. O arquivo pode ser importado de novo.' : 'Importação desfeita. O arquivo pode ser importado de novo.');
+        setNotice(action === 'delete_import_history' ? 'Importação excluída do histórico.' : action === 'force_clear_import' ? 'Importação retirada do histórico ativo. O arquivo pode ser importado de novo.' : 'Importação desfeita. O arquivo pode ser importado de novo.');
         await reload(); await load(); await onChange?.();
       }
     } catch (e) {
       const message = errorMessage(e);
       // Banco sem as migrations novas: a ação não existe e antes o erro passava despercebido.
-      setError(/Operação inválida|Could not find|does not exist/i.test(message) ? 'O banco ainda não tem a atualização de importações (migrations 023 a 026). Aplique-as no Supabase e tente de novo.' : message);
+      setError(/Operação inválida|Could not find|does not exist/i.test(message) ? (action === 'delete_import_history' ? 'O banco ainda não tem a migration 029. Aplique-a no Supabase e tente de novo.' : 'O banco ainda não tem a atualização de importações (migrations 023 a 026). Aplique-as no Supabase e tente de novo.') : message);
     } finally {lock.current = false; setBusy(false)}
   }
 
@@ -51,6 +51,7 @@ export default function ImportHistory({db, household, data, cardId, reload, onCh
   return <section className="card space-y-3 import-history" aria-label="Histórico de importações">
     <h3>Histórico de importações</h3>
     {notice && <p role="status" className="import-done">{notice}</p>}
+    {error && !open && <p role="alert" className="payment-error">{error}</p>}
     {history.map(h => {
       const total = h.summary.total ?? (h.summary.rows ? h.summary.rows.filter(r => r.decision === 'new').reduce((s, r) => s + Math.round(Number(r.amount) * 100), 0) / 100 : null);
       const cleared = Boolean(h.effects?.force_cleared || h.effects?.released_orphan);
@@ -60,6 +61,7 @@ export default function ImportHistory({db, household, data, cardId, reload, onCh
         <p>{h.summary.imported ?? 0} lançados · {h.summary.linked ?? 0} já existentes · Total: {total === null ? '—' : brl(Number(total))}{h.summary.statement_total != null && ' · PDF: ' + brl(Number(h.summary.statement_total))}{h.summary.adjustment != null && ' · Ajuste: ' + brl(Number(h.summary.adjustment))}</p>
         <p>Situação: <b>{h.status === 'undone' ? (cleared ? 'Limpa (sem lançamentos)' : 'Desfeita') : 'Ativa'}</b></p>
         {h.status !== 'undone' && open !== h.id && <button disabled={busy} onClick={() => start(h.id)}>Desfazer importação</button>}
+        {h.status === 'undone' && <button type="button" className="btn sm danger" disabled={busy} onClick={() => {setOpen(null); setPreview(null); if (window.confirm(`Excluir "${h.file_name}" do histórico? Só o registro desta importação desfeita é apagado; lançamentos, faturas e saldos não mudam.`)) void act('delete_import_history', h.id, {confirmed: true})}}>Excluir do histórico</button>}
 
         {open === h.id && <section role="group" aria-label="Desfazer importação" className="undo-panel">
           {busy && !preview && <p>Conferindo o que será removido…</p>}

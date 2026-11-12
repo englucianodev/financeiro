@@ -456,7 +456,7 @@ button.btn.link,.link-button{background:none!important;border:0;color:var(--acce
 
 /* Início · gráfico de pizza do mês */
 .pie-wrap{display:flex;flex-direction:column;align-items:center;gap:8px}
-.pie{width:100%;max-width:600px;height:auto;overflow:visible}
+.pie{display:block;margin:0 auto;width:100%;max-width:600px;height:auto;overflow:visible}
 .pie-slice{cursor:pointer;transition:opacity .15s,d .15s;outline:none}
 .pie-slice:focus-visible{stroke:var(--accent);stroke-width:3}
 .pie-slice.dim,.pie-label.dim{opacity:.35}
@@ -466,7 +466,14 @@ button.btn.link,.link-button{background:none!important;border:0;color:var(--acce
 .pie-c-value{font:700 24px var(--font-head);fill:var(--ink)}
 .pie-c-value.neg{fill:var(--late)}
 .pie-c-sub{font:500 13px var(--font-body);fill:var(--muted)}
-@media(max-width:760px){.pie-name{font-size:24px}.pie-pct{font-size:22px}.pie-c-label,.pie-c-sub{font-size:19px}.pie-c-value{font-size:30px}}
+/* A pizza escala com a largura do bloco: em blocos estreitos os textos crescem para continuar legíveis */
+.pie-wrap{container-type:inline-size;width:100%}
+.pie-c-value.long{font-size:20px}.pie-c-value.xlong{font-size:17px}
+.pie-block{display:flex;flex-direction:column;align-items:center;gap:8px}
+@container (max-width:460px){.pie-name{font-size:24px}.pie-pct{font-size:22px}.pie-c-label,.pie-c-sub{font-size:19px}.pie-c-value{font-size:30px}.pie-c-value.long{font-size:25px}.pie-c-value.xlong{font-size:21px}}
+.pie-wrap.on-dark .pie-name,.pie-wrap.on-dark .pie-c-value{fill:#ffffff}
+.pie-wrap.on-dark .pie-c-label,.pie-wrap.on-dark .pie-c-sub{fill:#c9cbf2}
+.pie-wrap.on-dark .chart-note{color:#c9cbf2}
 
 /* Contas: cartões e contas bancárias em blocos (até 3 colunas) */
 #screen-accounts{gap:28px}
@@ -485,7 +492,8 @@ button.btn.link,.link-button{background:none!important;border:0;color:var(--acce
 #credit-module .section-heading h2,.accounts-section .section-heading h2{font-size:var(--t-20)}
 
 /* Transações: botões que abrem/fecham o formulário */
-.tx-toggles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tx-toggles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:520px){button.tx-toggle{flex-direction:column;gap:4px;min-height:64px;font-size:var(--t-13);line-height:1.2;padding:8px 6px;text-align:center}}
 button.tx-toggle{min-height:52px;font-size:var(--t-14);justify-content:center;background:var(--panel);color:var(--ink);border:1px solid var(--line)}
 button.tx-toggle svg{color:var(--accent)}
 button.tx-toggle.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
@@ -561,3 +569,24 @@ button.btn-small{min-height:var(--h-btn-sm);padding:4px 12px;font-size:var(--t-1
  .history-row{grid-template-columns:44px minmax(0,1fr) auto}
  .history-actions{grid-column:1/-1;grid-template-columns:1fr 1fr}
 }
+
+/* Ação destrutiva secundária */
+.btn.danger,button.btn.danger{background:var(--panel);color:var(--late);border:1px solid var(--late-soft)}
+.btn.danger:hover:not(:disabled){background:var(--late-soft)}
+
+/* Média de gastos (fluxo de caixa e simulador) */
+.avg-control{border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px;background:var(--accent-soft);display:grid;gap:10px}
+.avg-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.avg-head>div:first-child{display:grid;gap:2px}
+.avg-head b{font-size:var(--t-14)}
+.avg-head small{font-size:var(--t-12);color:var(--muted)}
+.avg-list summary{cursor:pointer;font-size:var(--t-13);color:var(--accent);font-weight:600}
+.avg-list .row-list{margin-top:8px;background:var(--panel)}
+.avg-list p{margin-top:8px;font-size:var(--t-12)}
+.property-installments{display:grid;gap:6px;margin-top:4px}
+.property-installments li{display:flex;justify-content:space-between;gap:12px;font-size:var(--t-13);padding:8px 12px;border:1px solid var(--line);border-radius:var(--r-sm)}
+.property-installments small{color:var(--muted)}
+.avg-control .segmented-control.mini{background:var(--panel);grid-auto-columns:1fr}
+.avg-control .segmented-control.mini button{white-space:nowrap;padding:4px 10px}
+@media(max-width:520px){.avg-control .segmented-control.mini{width:100%}.avg-control .segmented-control.mini button{padding:4px 6px;font-size:var(--t-13)}}
+.avg-control .segmented-control.mini button[aria-pressed=true]{background:var(--accent);color:var(--on-accent)}

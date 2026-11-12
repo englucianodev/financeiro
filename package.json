@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "tsc lib/money.ts lib/identity.ts lib/finance-view.ts lib/credit.ts lib/statements.ts lib/pdf-layout.ts lib/email-notifications.ts lib/statement-banks.ts lib/statement-import.ts --outDir .test-build --module commonjs --target es2021 --skipLibCheck && node tests/money.mjs && node tests/identity.mjs && node tests/finance-view.mjs && node tests/credit-view.mjs && node tests/statements.mjs && node tests/statement-import.mjs",
+    "test": "tsc lib/money.ts lib/identity.ts lib/finance-view.ts lib/credit.ts lib/statements.ts lib/pdf-layout.ts lib/email-notifications.ts lib/statement-banks.ts lib/statement-import.ts lib/forecast.ts --outDir .test-build --module commonjs --target es2021 --skipLibCheck && node tests/money.mjs && node tests/identity.mjs && node tests/finance-view.mjs && node tests/credit-view.mjs && node tests/statements.mjs && node tests/statement-import.mjs && node tests/forecast.mjs",
     "test:db": "node tests/database.mjs",
     "test:e2e": "playwright test",
     "test:credit": "node tests/credit-database.mjs",
@@ -18,7 +18,8 @@
     "test:reference": "node tests/import-reference.mjs",
     "test:repair": "node tests/import-repair.mjs",
     "test:amounts": "node tests/import-amounts.mjs",
-    "test:category": "node tests/card-category.mjs"
+    "test:category": "node tests/card-category.mjs",
+    "test:delete-import": "node tests/import-delete.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.1.0",
