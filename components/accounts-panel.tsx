@@ -44,13 +44,14 @@ export default function AccountsPanel({db,household,accounts,members,reload,sche
   lock.current=true;setBusy(true);setError('');try{const future=date>today();const r=await db.rpc(future?'schedule_transfer':'transfer_funds',{p_from:editing.id,p_to:to,p_amount:amount,...(future?{p_id:key,p_date:date}:{p_key:key,p_date:date})});if(r.error)throw r.error;keys.current.delete(signature);await reload();setForm(false);setEditing(null)}catch(e){setError(errorMessage(e))}finally{lock.current=false;setBusy(false)}
  }
  async function confirmScheduled(id:string){if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const r=await db.rpc('execute_transfer',{p_id:id});if(r.error)throw r.error;await reload()}catch(e){setError(errorMessage(e))}finally{lock.current=false;setBusy(false)}}
- return <section id="accounts" className="card">
-  <div className="section-heading"><h2>Contas</h2><button disabled={busy} onClick={()=>open(null)}>Adicionar conta</button></div>
+ return <section id="accounts" className="accounts-section">
+  <div className="section-heading"><h2>Contas bancárias</h2><button className="btn sm" disabled={busy} onClick={()=>open(null)}>Nova conta</button></div>
   {transferHint&&<p role="status" className="muted">Toque em Editar na conta de origem para transferir.</p>}
-  {accounts.map(a=><article key={a.id} className="bank-card" style={{borderLeftColor:a.color??palette[0]}}>
-   <div><Wallet/><h3>{a.name} {a.is_primary?'★':''}</h3><small>{members.find(m=>m.user_id===a.owner_id)?.display_name} · {a.account_type==='investment'?'Investimento':a.account_type==='recurring'?'Despesas recorrentes':'Uso diário'}</small></div>
-   <div className="bank-card-actions"><button className="balance-button" aria-label={'Ajustar saldo de '+a.name} title="Toque para ajustar o saldo" disabled={busy} onClick={()=>open(a,true)}>{brl(a.balance)}<Pencil size={14}/></button><button aria-label={'Editar conta '+a.name} disabled={busy} onClick={()=>open(a)}><Pencil size={15}/>Editar</button></div>
-  </article>)}
+  <div className="acct-grid">{accounts.map(a=><article key={a.id} className="bank-card acct-tile" style={{borderTopColor:a.color??palette[0]}}>
+   <header><h3>{a.name}{a.is_primary&&<span className="acct-star" title="Conta principal">★</span>}</h3><small>{members.find(m=>m.user_id===a.owner_id)?.display_name} · {a.account_type==='investment'?'Investimento':a.account_type==='recurring'?'Despesas recorrentes':'Uso diário'}</small></header>
+   <button className="balance-button" aria-label={'Ajustar saldo de '+a.name} title="Toque para ajustar o saldo" disabled={busy} onClick={()=>open(a,true)}><span className={a.balance<0?'negative':''}>{brl(a.balance)}</span><Pencil size={14}/></button>
+   <div className="acct-actions"><button type="button" aria-label={'Editar conta '+a.name} disabled={busy} onClick={()=>open(a)}><Pencil size={15}/>Editar</button></div>
+  </article>)}</div>
   <dialog ref={dialog} className="account-dialog" aria-label={balanceOnly?'Ajustar saldo':editing?'Editar conta':'Nova conta'} onCancel={e=>{if(busy)e.preventDefault();else setForm(false)}} onClose={()=>setForm(false)}>
    {form&&editing&&!balanceOnly&&<nav className="more-menu" aria-label="Opções da conta"><button disabled={busy} aria-pressed={view==='details'} onClick={()=>{setView('details');setError('')}}>Dados da conta</button><button disabled={busy} aria-pressed={view==='transfer'} onClick={()=>{setView('transfer');setError('')}}>Transferir</button></nav>}
    {form&&(balanceOnly||view==='details')&&<form key={(balanceOnly?'balance:':'account:')+(editing?.id??'new')} className={balanceOnly?'space-y-4':'form-grid'} onSubmit={save}>

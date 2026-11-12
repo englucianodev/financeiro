@@ -1,13 +1,26 @@
 "use client";
-import {useRef,useState} from 'react';
+// Transações: dois botões que abrem e fecham o formulário correspondente.
+import {useState} from 'react';
 import type {SupabaseClient} from '@supabase/supabase-js';
-import EntryForm from './entry-form';import {CardEntryForm} from './credit-module';
-import type {CreditData} from '@/lib/credit';import type {ViewAccount} from '@/lib/finance-view';import type {PropertyRecord} from './properties-panel';import {today} from '@/lib/money';
-export default function TransactionActions(props:{db:SupabaseClient;household:string;userId:string;accounts:ViewAccount[];members:{user_id:string;display_name:string}[];categories:{name:string;kind:string;active:boolean}[];properties:PropertyRecord[];data:CreditData;reload:()=>Promise<void>;initialOpen:boolean}){
- const [mode,setMode]=useState(props.initialOpen?'expense':''),[menu,setMenu]=useState(false),[card,setCard]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);const lock=useRef(false),keys=useRef(new Map<string,string>());
- return <section className="card transaction-actions"><button aria-expanded={menu} aria-controls="expense-options" onClick={()=>setMenu(open=>!open)}>Despesa</button><nav id="expense-options" hidden={!menu} className="more-menu" aria-label="Opções de despesa">{[['expense','Despesa avulsa'],['card','Lançar no cartão'],['refund','Estorno no cartão']].map(([value,label])=><button key={value} aria-pressed={mode===value} onClick={()=>{setMode(value);setMenu(false)}}>{label}</button>)}</nav>
- {mode==='expense'&&<EntryForm {...props} creditData={props.data} initialType="expense" cards={props.data.cards}/>}{mode==='card'&&<CardEntryForm {...props}/>}
- {mode==='refund'&&<form className="form-grid" aria-label="Estorno no cartão" onSubmit={async e=>{e.preventDefault();if(lock.current)return;lock.current=true;setBusy(true);setError('');const fd=new FormData(e.currentTarget),p={card_id:card,amount:Number(fd.get('amount')),date:fd.get('date'),description:fd.get('description'),purchase_id:fd.get('purchase')||null},signature=JSON.stringify(p);let id=keys.current.get(signature);if(!id){id=crypto.randomUUID();keys.current.set(signature,id)}try{const r=await props.db.rpc('cc_action',{p_id:id,p_household:props.household,p_action:'card_refund',p_data:p});if(r.error)throw r.error;await props.reload();setMode('choice')}catch(e){setError(String((e as {message?:string}).message??e))}finally{lock.current=false;setBusy(false)}}}>
- <h3 className="form-title">Estorno no cartão</h3><label>Cartão<select aria-label="Cartão" required value={card} onChange={e=>setCard(e.target.value)}><option value="">Selecione</option>{props.data.cards.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label>Valor do estorno<input name="amount" type="number" step=".01" min=".01" required/></label><label>Data do estorno<input name="date" type="date" required defaultValue={today()} max={today()}/></label><label>Descrição do estorno<input name="description" maxLength={200} required/></label><label>Compra original (opcional)<select name="purchase" key={card}><option value="">Sem vínculo</option>{props.data.purchases.filter(p=>p.card_id===card).map(p=><option key={p.id} value={p.id}>{p.title}</option>)}</select></label><p className="muted form-title">Crédito na fatura, sem entrada de dinheiro na conta bancária. A compra original é preservada.</p><button disabled={busy}>Confirmar estorno</button>{error&&<p role="alert">{error}</p>}</form>}
- </section>;
+import {Receipt, CreditCard} from 'lucide-react';
+import EntryForm from './entry-form';
+import {CardEntryForm} from './credit-module';
+import type {CreditData} from '@/lib/credit';
+import type {ViewAccount} from '@/lib/finance-view';
+import type {PropertyRecord} from './properties-panel';
+
+export type TransactionMode = '' | 'expense' | 'card';
+export default function TransactionActions(props: {db: SupabaseClient; household: string; userId: string; accounts: ViewAccount[]; members: {user_id: string; display_name: string}[]; categories: {name: string; kind: string; active: boolean}[]; properties: PropertyRecord[]; data: CreditData; reload: () => Promise<void>; initialMode?: TransactionMode}) {
+  const [mode, setMode] = useState<TransactionMode>(props.initialMode ?? '');
+  const toggle = (m: TransactionMode) => setMode(current => current === m ? '' : m);
+  return <section className="card transaction-actions">
+    <div className="tx-toggles" role="group" aria-label="Nova despesa">
+      <button type="button" className={'tx-toggle' + (mode === 'expense' ? ' on' : '')} aria-expanded={mode === 'expense'} aria-controls="tx-form" onClick={() => toggle('expense')}><Receipt size={18}/>Despesa avulsa</button>
+      <button type="button" className={'tx-toggle' + (mode === 'card' ? ' on' : '')} aria-expanded={mode === 'card'} aria-controls="tx-form" onClick={() => toggle('card')}><CreditCard size={18}/>Lançar no cartão</button>
+    </div>
+    <div id="tx-form">
+      {mode === 'expense' && <EntryForm {...props} creditData={props.data} initialType="expense" cards={props.data.cards}/>}
+      {mode === 'card' && <CardEntryForm {...props}/>}
+    </div>
+  </section>;
 }
