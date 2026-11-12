@@ -77,3 +77,26 @@ console.log('Importação: cabeçalhos C6/Azul, fatura pelo mês do vencimento (
 }
 function makeRowSafe(d){return parseStatement('01/10/2026 '+d+' 10,00','pdf').rows[0].count}
 console.log('PDF Itaú/Azul: parcela colada, total atual (não o anterior), cartão mascarado, adicional, produtos/serviços, próximas faturas e centavos OK');
+// Categoria pela compra anterior parecida (qualquer cartão), ignorando "Outros"; várias → a mais recente.
+{
+ const {guessCategory,storeSimilarity}=await import('../.test-build/statement-import.js');
+ const L=(title,category,charge_date,card_id='x')=>({id:title+charge_date,title,category,charge_date,card_id,line_type:'principal',invoice_id:'i',purchase_id:null,responsible_id:'u',amount:10,paid:0,installment:null});
+ const r=(description,kind='purchase')=>({description,kind,category:'Outros'});
+ const lines=[L('HORTIPLUS MIGUELBELO H','Supermercado','2026-06-29'),L('HORTIPLUS MIGUEL','Outros','2026-10-18'),L('DL*UberRidesSao PauloBR','Transporte','2026-06-25'),L('DL *UBERRIDES','Lazer','2026-05-01'),
+  L('MED CLUBE ADMI','Saúde','2026-06-03'),L('AZUL LINHAS NF6BMB','Viagem','2026-10-12','outro-cartao'),L('POSTO MAXXI INFINIT','Transporte','2026-10-11'),L('IFD*DROGARIA ARAUJO SBE','Farmácia','2026-08-30'),L('SUPERMERCADOS BH','Supermercado','2026-10-19'),L('MERCADO*MERCADOLIVRE','Compras','2026-10-12')];
+ assert.equal(guessCategory(r('HORTIPLUS MIGUEL'),lines).category,'Supermercado','ignora "Outros" e usa a compra categorizada com nome parecido');
+ assert.equal(guessCategory(r('DL*UberRides'),lines).category,'Transporte','prefixo DL* e cidade colada; a mais recente vence');
+ assert.equal(guessCategory(r('MED CLUBE ADMINISTRADO'),lines).category,'Saúde','nome cortado');
+ assert.equal(guessCategory(r('Azul Linhas Aereas'),lines).category,'Viagem','mesmas duas primeiras palavras, de outro cartão');
+ assert.equal(guessCategory(r('POSTO MAXXI 03'),lines).category,'Transporte');
+ assert.equal(guessCategory(r('IFD*DROGARIA ARAUJO S'),lines).category,'Farmácia');
+ assert.equal(guessCategory(r('POSTO CERTO 2'),lines).category,'Outros','posto diferente não herda');
+ assert.equal(guessCategory(r('SUPERMERCADOS ABC'),lines).category,'Outros','primeira palavra igual não basta');
+ assert.equal(guessCategory(r('IOF COMPRA','fee'),lines).category,'Encargos');
+ assert.match(guessCategory(r('MED CLUBE ADMINISTRADO'),lines).hint,/MED CLUBE ADMI.*03\/06\/2026/);
+ // várias categorias para a mesma loja: vale a última atribuída (compra mais recente)
+ const many=[L('PADARIA SOL','Alimentação','2026-08-01'),L('PADARIA SOL','Lanches','2026-10-01'),L('PADARIA SOL','Café','2026-09-01')];
+ assert.equal(guessCategory(r('PADARIA SOL'),many).category,'Lanches');
+ assert.equal(storeSimilarity('SCRIBD R682065294 SA USD 5,15 | Cotação USD: R$5,66','SCRIBD R682065294 SA USD 5,36 | Cotação USD: R$5,48'),3,'câmbio ignorado');
+ console.log('Categoria pela compra anterior parecida OK');
+}

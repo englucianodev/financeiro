@@ -30,6 +30,12 @@ export default function Donut({slices, label, center, suffix = '', tone, note = 
   let angle = 0;
   const geo = slices.map(s => {const a0 = angle; angle += (s.value / (total || 1)) * Math.PI * 2; return {...s, a0, a1: angle, mid: (a0 + angle) / 2}});
   const current = active !== null ? geo[active] : null;
+  // Rótulos externos não se sobrepõem: em cada lado, afasta verticalmente os que ficariam colados.
+  const labelY = geo.map((s, i) => pt(LABEL + (active === i ? GROW : 0), s.mid)[1]);
+  for (const right of [true, false]) {
+    const idx = geo.map((s, i) => i).filter(i => (Math.sin(geo[i].mid) >= 0) === right && (geo[i].a1 - geo[i].a0 >= 0.22 || active === i)).sort((a, b) => labelY[a] - labelY[b]);
+    for (let k = 1; k < idx.length; k++) if (labelY[idx[k]] - labelY[idx[k - 1]] < 34) labelY[idx[k]] = labelY[idx[k - 1]] + 34;
+  }
   const short = (name: string) => name.length > 14 ? name.slice(0, 13) + '…' : name;
   return <div className={'pie-wrap' + (tone === 'dark' ? ' on-dark' : '')}>
     <svg className="pie" viewBox="-60 30 560 380" role="img" aria-label={label} onMouseLeave={() => setActive(null)}>
@@ -44,7 +50,7 @@ export default function Donut({slices, label, center, suffix = '', tone, note = 
       })}
       {geo.map((s, i) => {
         if (s.a1 - s.a0 < 0.22 && active !== i) return null; // fatias muito finas: rótulo só ao destacar
-        const [x, y] = pt(LABEL + (active === i ? GROW : 0), s.mid), right = Math.sin(s.mid) >= 0;
+        const [x] = pt(LABEL + (active === i ? GROW : 0), s.mid), y = labelY[i], right = Math.sin(s.mid) >= 0;
         const [ix, iy] = pt((RI + RO) / 2, s.mid);
         return <g key={'l' + s.name} className={'pie-label' + (active !== null && active !== i ? ' dim' : '')} aria-hidden="true">
           {s.a1 - s.a0 >= 0.3 && <text x={ix} y={iy} className="pie-pct" textAnchor="middle" dominantBaseline="central">{pct(s.percent)}</text>}

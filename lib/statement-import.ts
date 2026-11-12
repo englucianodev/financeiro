@@ -6,7 +6,7 @@ import type {Card, CreditData, Invoice, Line} from './credit';
 import type {StatementHeader} from './statement-banks';
 
 export type ImportGroup = 'avista' | 'parcela-nova' | 'existente' | 'revisar' | 'ignorado';
-export type ImportRow = StatementRow & {group: ImportGroup; note: string; estimated: boolean; repeated: number; amounts: number[] | null};
+export type ImportRow = StatementRow & {group: ImportGroup; note: string; estimated: boolean; repeated: number; amounts: number[] | null; category_hint?: string};
 export type ReferenceOption = {cycle: string; label: string; closing: string; due: string; invoice?: Invoice};
 export type ImportDraft = {
   fileName: string; hash: string; header: StatementHeader; rows: ImportRow[];
@@ -79,11 +79,49 @@ export function referenceOptions(invoices: Invoice[], root: Card, around: string
   });
 }
 
-function guessCategory(row: StatementRow, lines: Line[]) {
-  if (row.kind === 'fee') return 'Encargos';
-  const key = merchant(row.description);
-  const previous = lines.filter(l => merchant(l.title) === key && l.category && l.category !== 'Ajuste de Fatura').sort((a, b) => b.charge_date.localeCompare(a.charge_date))[0];
-  return previous?.category ?? row.category ?? 'Outros';
+// ---- Categoria pela compra anterior parecida ----
+// Prefixos de intermediários de pagamento ("IFD*", "MP *", "DL*", "PG *"...) não identificam a loja.
+const GATEWAYS = new Set(['ifd', 'mp', 'dl', 'pg', 'pp', 'pag', 'bmb', 'ebn', 'ec', 'jimcom', 'sumup', 'pagseguro', 'mercadopago', 'paypal', 'pic', 'stone']);
+function dropGateway(s: string): string {
+  const m = s.match(/^\s*([^*]{1,14}?)\s*\*\s*(.+)$/);
+  if (!m) return s;
+  const prefix = m[1].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return GATEWAYS.has(prefix) ? dropGateway(m[2]) : s;
+}
+/** Nome da loja normalizado para comparar: sem parcela, sem câmbio, sem prefixo de intermediário. */
+export function storeKey(description: string) {
+  const base = cleanDescription(description).replace(/\s+(USD|EUR|US\$)\s.*$/i, '').replace(/\|.*$/, '').replace(/\b\d{1,3}\s*\/\s*\d{1,3}\b/g, '');
+  const store = dropGateway(base);
+  const words = store.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  return {key: words.join(''), words};
+}
+/** 3 = mesmo nome; 2 = um nome é o começo do outro (nome cortado ou com a cidade colada); 1 = mesmas duas primeiras palavras; 0 = diferente. */
+export function storeSimilarity(a: string, b: string) {
+  const x = storeKey(a), y = storeKey(b);
+  if (!x.key || !y.key) return 0;
+  if (x.key === y.key) return 3;
+  const [short, long] = x.key.length <= y.key.length ? [x.key, y.key] : [y.key, x.key];
+  if (short.length >= 6 && long.startsWith(short)) return 2;
+  const two = (w: string[]) => w.slice(0, 2).join(' ');
+  if (x.words.length >= 2 && y.words.length >= 2 && two(x.words) === two(y.words) && two(x.words).replace(' ', '').length >= 6) return 1;
+  return 0;
+}
+const UNSET = new Set(['', 'outros', 'ajuste de fatura']);
+/**
+ * Categoria sugerida: a da compra anterior com nome parecido (em qualquer cartão da casa).
+ * Só conta compra que já foi categorizada (não "Outros"); havendo várias, vale a última atribuída (a compra mais recente).
+ */
+export function guessCategory(row: StatementRow, lines: Line[]): {category: string; hint: string} {
+  if (row.kind === 'fee') return {category: 'Encargos', hint: ''};
+  let best: {line: Line; score: number} | null = null;
+  for (const l of lines) {
+    if (l.line_type === 'adjustment' || l.line_type === 'fee' || UNSET.has((l.category ?? '').trim().toLowerCase())) continue;
+    const score = storeSimilarity(row.description, l.title);
+    if (!score) continue;
+    if (!best || l.charge_date > best.line.charge_date || (l.charge_date === best.line.charge_date && score > best.score)) best = {line: l, score};
+  }
+  if (!best) return {category: row.category || 'Outros', hint: ''};
+  return {category: best.line.category, hint: `pela compra "${best.line.title}" de ${dateBR(best.line.charge_date)}`};
 }
 
 /**
@@ -103,7 +141,8 @@ export function classifyRows(rows: StatementRow[], data: CreditData, cardId: str
   const where = (l: Line) => {const i = invoices.get(l.invoice_id); return i ? 'fatura de ' + cycleLabel(i.due_date) : 'outra fatura'};
 
   return rows.map(raw => {
-    const row: ImportRow = {...raw, category: guessCategory(raw, data.lines.filter(l => l.card_id === cardId)), group: 'avista', note: raw.card_final ? 'Cartão final ' + raw.card_final : '', estimated: false, repeated: repeats.get(key(raw)) ?? 1, decision: '', match_id: '', amounts: null};
+    const guess = guessCategory(raw, data.lines);
+    const row: ImportRow = {...raw, category: guess.category, category_hint: guess.hint, group: 'avista', note: raw.card_final ? 'Cartão final ' + raw.card_final : '', estimated: false, repeated: repeats.get(key(raw)) ?? 1, decision: '', match_id: '', amounts: null};
     const withNote = (text: string) => row.note ? text + ' · ' + row.note : text;
     const take = (l: Line) => {used.add(l.id); return l};
     if (row.kind === 'payment') return {...row, group: 'ignorado', decision: 'skip', note: 'Pagamento da fatura anterior'};

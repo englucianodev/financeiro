@@ -109,7 +109,7 @@ export default function StatementTools({db, household, data, card, categories = 
     <li key={n} className={'import-row' + (r.decision === '' ? ' needs-decision' : '')}>
       <div className="import-row-main">
         <span className="import-date">{dateBR(r.date).slice(0, 5) || '??/??'}</span>
-        <span className="import-desc">{r.description}{r.count > 1 && <em> {r.installment}/{r.count}</em>}{r.note && <small>{r.note}</small>}</span>
+        <span className="import-desc">{r.description}{r.count > 1 && <em> {r.installment}/{r.count}</em>}{r.note && <small>{r.note}</small>}{r.kind !== 'payment' && <small className="import-cat">Categoria: <b>{r.category || 'Outros'}</b>{r.category_hint && ' · ' + r.category_hint}</small>}</span>
         <strong className={r.amount < 0 ? 'positive' : ''}>{brl(r.amount)}</strong>
       </div>
       <div className="import-row-actions">
@@ -125,7 +125,7 @@ export default function StatementTools({db, household, data, card, categories = 
         <label>Descrição<input value={r.description} maxLength={200} onChange={e => updateRow(n, {description: e.target.value})}/></label>
         <label>Data da compra<input type="date" max={today()} value={r.date} onChange={e => updateRow(n, {date: e.target.value})}/></label>
         <label>Valor nesta fatura<input type="number" step=".01" value={Number.isFinite(r.amount) ? r.amount : ''} onChange={e => updateRow(n, {amount: Number(e.target.value)})}/></label>
-        <label>Categoria<input list="import-categories" value={r.category} maxLength={100} onChange={e => updateRow(n, {category: e.target.value})}/></label>
+        <label>Categoria<input list="import-categories" value={r.category} maxLength={100} onChange={e => updateRow(n, {category: e.target.value, category_hint: ''})}/></label>
         <label>Tipo<select value={r.kind} onChange={e => updateRow(n, {kind: e.target.value as ImportRow['kind']})}>{KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
         <label>Parcela<span className="inline-pair"><input aria-label="Parcela atual" type="number" min="1" max="120" value={r.installment} onChange={e => updateRow(n, {installment: Number(e.target.value)})}/> de <input aria-label="Total de parcelas" type="number" min="1" max="120" value={r.count} onChange={e => updateRow(n, {count: Number(e.target.value)})}/></span></label>
         {r.kind === 'purchase' && r.count > 1 && <label>Valor total da compra<input type="number" step=".01" min=".01" value={r.total_amount ?? ''} onChange={e => updateRow(n, {total_amount: e.target.value === '' ? null : Number(e.target.value), estimated: false})}/>{r.estimated && <small>Estimado: parcela × {r.count}. Ajuste se souber o total exato.</small>}</label>}
