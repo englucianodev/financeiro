@@ -61,6 +61,12 @@ export function suggestReference(invoices: Invoice[], root: Card, header: Pick<S
   return {cycle: current.slice(0, 7) + '-01', reason: 'pelo mês atual (o PDF não informa datas)'};
 }
 
+/** Nome da fatura para o usuário: o mês do VENCIMENTO (o ciclo interno é o mês do fechamento). */
+export function referenceLabel(invoices: Invoice[], root: Card, cycle: string) {
+  const invoice = invoices.find(i => i.card_id === root.id && i.cycle === cycle);
+  return cycleLabel(invoice?.due_date ?? invoiceDates(root, cycle).due);
+}
+
 /** Opções do seletor: meses ao redor da sugestão, com as faturas que já existem. */
 export function referenceOptions(invoices: Invoice[], root: Card, around: string): ReferenceOption[] {
   const own = invoices.filter(i => i.card_id === root.id);
@@ -69,7 +75,7 @@ export function referenceOptions(invoices: Invoice[], root: Card, around: string
   return Array.from(cycles).sort().reverse().map(cycle => {
     const invoice = own.find(i => i.cycle === cycle);
     const dates = invoice ? {closing: invoice.closing_date, due: invoice.due_date} : invoiceDates(root, cycle);
-    return {cycle, invoice, ...dates, label: `${cycleLabel(cycle)} · fecha ${dateBR(dates.closing).slice(0, 5)} · vence ${dateBR(dates.due).slice(0, 5)}`};
+    return {cycle, invoice, ...dates, label: `Fatura de ${cycleLabel(dates.due)} · fecha ${dateBR(dates.closing).slice(0, 5)} · vence ${dateBR(dates.due).slice(0, 5)}`};
   });
 }
 
@@ -94,7 +100,7 @@ export function classifyRows(rows: StatementRow[], data: CreditData, cardId: str
   const key = (r: StatementRow) => [merchant(r.description), r.date, cents(r.amount), r.installment, r.count].join('|');
   const repeats = new Map<string, number>();
   for (const r of rows) repeats.set(key(r), (repeats.get(key(r)) ?? 0) + 1);
-  const where = (l: Line) => {const i = invoices.get(l.invoice_id); return i ? cycleLabel(i.cycle) : 'outra fatura'};
+  const where = (l: Line) => {const i = invoices.get(l.invoice_id); return i ? 'fatura de ' + cycleLabel(i.due_date) : 'outra fatura'};
 
   return rows.map(raw => {
     const row: ImportRow = {...raw, category: guessCategory(raw, data.lines.filter(l => l.card_id === cardId)), group: 'avista', note: raw.card_final ? 'Cartão final ' + raw.card_final : '', estimated: false, repeated: repeats.get(key(raw)) ?? 1, decision: '', match_id: '', amounts: null};

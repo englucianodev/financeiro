@@ -1,5 +1,11 @@
 import {today} from './money';
-import {type ViewEvent,monthlySummary} from './finance-view';
+import {type ViewEvent,monthlySummary,moveMonth} from './finance-view';
+/** Meses entre o fechamento (ciclo interno) e o vencimento: 1 quando o vencimento cai no mês seguinte ao fechamento. */
+export const dueShift=(root:{closing_day:number;due_day:number})=>root.due_day<=root.closing_day?1:0;
+/** Mês da fatura para o usuário = mês do vencimento (o ciclo interno continua sendo o mês do fechamento). */
+export const invoiceMonth=(i:{due_date:string})=>i.due_date.slice(0,7);
+export const cycleToDueMonth=(root:{closing_day:number;due_day:number},cycle:string)=>cycle?moveMonth(cycle.slice(0,7),dueShift(root)):'';
+export const dueMonthToCycle=(root:{closing_day:number;due_day:number},month:string)=>month?moveMonth(month.slice(0,7),-dueShift(root)):'';
 export type Card={id:string;name:string;owner_id:string;account_id:string;closing_day:number;due_day:number;issuer:string;brand:string;last_four:string;credit_limit:number;automatic_debit:boolean;color:string;card_status:'active'|'blocked'|'archived';parent_card_id:string|null;module_version:number;revision:number};
 export type Invoice={id:string;card_id:string;cycle:string;closing_date:string;due_date:string;revision:number};
 export type Obligation={id:string;card_id:string;responsible_id:string;title:string;category:string;amount:number;due_date:string;mode:'automatic'|'manual';state:'pending'|'posted'|'cancelled';recurrence_id:string|null;revision:number;generation_error?:string};
@@ -32,7 +38,7 @@ export function creditEvents(data:CreditData,current=today()):ViewEvent[]{
  for(const invoice of data.invoices){
   const card=data.cards.find(c=>c.id===invoice.card_id);if(!card)continue;const t=invoiceTotals(invoice,data.lines,current);
   if(t.total===0&&t.paid===0)continue;
-  rows.push({id:'cc-invoice:'+invoice.id,source:'cc_invoice',source_id:invoice.id,card_id:card.id,card_owner_id:card.owner_id,title:card.name+' · Fatura '+invoice.cycle.slice(0,7).split('-').reverse().join('/'),category:'Fatura de cartão',kind:'expense',amount:t.total,paid_amount:t.paid,due_date:invoice.due_date,account_id:card.account_id,owner_id:card.owner_id,status:t.balance<=0?'settled':'pending',edit_version:invoice.revision});
+  rows.push({id:'cc-invoice:'+invoice.id,source:'cc_invoice',source_id:invoice.id,card_id:card.id,card_owner_id:card.owner_id,title:card.name+' · Fatura '+invoiceMonth(invoice).split('-').reverse().join('/'),category:'Fatura de cartão',kind:'expense',amount:t.total,paid_amount:t.paid,due_date:invoice.due_date,account_id:card.account_id,owner_id:card.owner_id,status:t.balance<=0?'settled':'pending',edit_version:invoice.revision});
   if(invoice.closing_date>=current)rows.push({id:'cc-closing:'+invoice.id,source:'cc_closing',source_id:invoice.id,title:'Fechamento · '+card.name,category:'Fechamento',kind:'expense',amount:0,paid_amount:0,due_date:invoice.closing_date,account_id:card.account_id,owner_id:card.owner_id,status:'pending',card_id:card.id});
  }
  for(const ob of data.obligations){
@@ -53,4 +59,4 @@ export function creditEvents(data:CreditData,current=today()):ViewEvent[]{
  return rows;
 }
 export const creditStatus=(e:ViewEvent,current=today())=>e.source==='cc_invoice'?'Fatura consolidada':e.source==='cc_closing'?'Fechamento da fatura':e.source==='cc_charge'?'Compra lançada no cartão':e.status==='cancelled'?'Cancelada':e.status==='settled'?(e.card_mode==='automatic'?'Cobrança automática registrada':'Lançada no cartão'):e.due_date<current?(e.card_mode==='manual'?'Vencida e não lançada':'Cobrança automática não registrada'):(e.card_mode==='manual'?'Pendente de lançamento no cartão':'Cobrança automática prevista');
-export function cardCategorySummary(data:CreditData,card:Card,month:string,legacy:ViewEvent[]=[]){return monthlySummary([...creditEvents(data).filter(e=>e.source==='cc_charge'&&e.card_id===card.id).map(e=>({...e,due_date:data.invoices.find(i=>i.id===data.lines.find(l=>l.id===e.source_id)?.invoice_id)?.cycle??e.due_date})),...legacy.filter(e=>e.card_id===card.id)],month)}
+export function cardCategorySummary(data:CreditData,card:Card,month:string,legacy:ViewEvent[]=[]){return monthlySummary([...creditEvents(data).filter(e=>e.source==='cc_charge'&&e.card_id===card.id).map(e=>({...e,due_date:data.invoices.find(i=>i.id===data.lines.find(l=>l.id===e.source_id)?.invoice_id)?.due_date??e.due_date})),...legacy.filter(e=>e.card_id===card.id)],month)}

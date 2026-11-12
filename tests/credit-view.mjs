@@ -44,3 +44,12 @@ assert.equal(creditEvents(credited).find(e=>e.source==='cc_invoice').amount,-20)
 assert.equal(transactionView(creditEvents(credited),{month:'2026-11'}).rows.length,1);
 const refundedPaid={...unpaidData,lines:[{...unpaidData.lines[0],amount:100,paid:100},{...unpaidData.lines[0],id:'refund',amount:-20,paid:0,line_type:'refund',installment:null}]};
 assert.equal(creditEvents(refundedPaid).find(e=>e.source==='cc_invoice').amount,80);
+// Mês da fatura para o usuário = mês do vencimento (Azul: fecha 24, vence 1 → fecha em outubro, é a fatura de novembro).
+{
+ const {dueShift,invoiceMonth,cycleToDueMonth,dueMonthToCycle}=await import('../.test-build/credit.js');
+ const azul={closing_day:24,due_day:1},c6={closing_day:4,due_day:10};
+ assert.equal(dueShift(azul),1);assert.equal(dueShift(c6),0);
+ assert.equal(cycleToDueMonth(azul,'2026-10-01'),'2026-11');assert.equal(dueMonthToCycle(azul,'2026-11'),'2026-10');assert.equal(dueMonthToCycle(azul,'2027-01'),'2026-12');
+ assert.equal(cycleToDueMonth(c6,'2026-11-01'),'2026-11');assert.equal(invoiceMonth({due_date:'2026-11-01'}),'2026-11');
+ console.log('Mês da fatura pelo vencimento OK');
+}

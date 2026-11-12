@@ -5,7 +5,7 @@ import {type Card, type CreditData, invoiceTotals, rootCard} from '@/lib/credit'
 import {parseStatement, type StatementRow} from '@/lib/statements';
 import {readStatementFile, recognizeProtectedPages} from '@/lib/statement-file';
 import {readHeader} from '@/lib/statement-banks';
-import {classifyRows, cycleLabel, dateBR, importPayload, importTotals, pending, referenceOptions, suggestReference, type ImportDraft, type ImportGroup, type ImportRow} from '@/lib/statement-import';
+import {classifyRows, cycleLabel, dateBR, referenceLabel, importPayload, importTotals, pending, referenceOptions, suggestReference, type ImportDraft, type ImportGroup, type ImportRow} from '@/lib/statement-import';
 import {brl, today} from '@/lib/money';
 import {errorMessage} from '@/lib/errors';
 import ImportHistory from './import-history';
@@ -35,7 +35,7 @@ export default function StatementTools({db, household, data, card, categories = 
   async function loadHistory() {const r = await db.from('cc_imports').select('file_hash,status').eq('card_id', card.id); if (!r.error) setHistory(r.data ?? [])}
 
   const options = useMemo(() => draft ? referenceOptions(invoices, root, draft.suggestedCycle) : [], [draft?.suggestedCycle, invoices, root]);
-  const selected = options.find(o => o.cycle === draft?.cycle) ?? (draft ? {cycle: draft.cycle, label: cycleLabel(draft.cycle), closing: '', due: '', invoice: invoices.find(i => i.cycle === draft.cycle)} : undefined);
+  const selected = options.find(o => o.cycle === draft?.cycle) ?? (draft ? {cycle: draft.cycle, label: referenceLabel(invoices, root, draft.cycle), closing: '', due: '', invoice: invoices.find(i => i.cycle === draft.cycle)} : undefined);
   const totals = draft ? importTotals(draft.rows, data, selected?.invoice, draft.header.total) : null;
   const waiting = draft ? pending(draft.rows) : [];
   const newCount = draft?.rows.filter(r => r.decision === 'new').length ?? 0;
@@ -92,7 +92,7 @@ export default function StatementTools({db, household, data, card, categories = 
 
   async function confirm() {
     if (!draft || lock.current) return;
-    const summary = `Importar ${newCount} lançamento(s) na fatura de ${cycleLabel(draft.cycle)}?` + (draft.adjust && totals?.adjustment ? `\nAjuste para o total do PDF: ${brl(totals.adjustment)}.` : '') + '\nVocê poderá desfazer pelo histórico de importações.';
+    const summary = `Importar ${newCount} lançamento(s) na fatura de ${referenceLabel(invoices, root, draft.cycle)}?` + (draft.adjust && totals?.adjustment ? `\nAjuste para o total do PDF: ${brl(totals.adjustment)}.` : '') + '\nVocê poderá desfazer pelo histórico de importações.';
     if (!window.confirm(summary)) return;
     lock.current = true; setBusy(true); setError('');
     try {
@@ -100,7 +100,7 @@ export default function StatementTools({db, household, data, card, categories = 
       const r = await db.rpc('cc_action', {p_id: requestId.current, p_household: household, p_action: 'import_statement', p_data: payload});
       if (r.error) {await db.rpc('record_cc_import_error', {p_household: household, p_data: {file_name: draft.fileName, error: r.error.message}}); throw r.error}
       await reload(); await loadHistory();
-      setDone(`Importação concluída: ${r.data?.imported ?? newCount} lançado(s), ${r.data?.linked ?? 0} já existente(s) na fatura de ${cycleLabel(draft.cycle)}.`);
+      setDone(`Importação concluída: ${r.data?.imported ?? newCount} lançado(s), ${r.data?.linked ?? 0} já existente(s) na fatura de ${referenceLabel(invoices, root, draft.cycle)}.`);
       setDraft(null);
     } catch (e) {setError(errorMessage(e))} finally {lock.current = false; setBusy(false)}
   }
@@ -156,11 +156,11 @@ export default function StatementTools({db, household, data, card, categories = 
       <p className="muted">{draft.header.bankLabel} · {draft.fileName}{draft.header.last4 && ' · final ' + draft.header.last4}</p>
       {duplicateFile && <p className="warning">Este arquivo já tem uma importação ativa neste cartão. Se ela não tiver mais lançamentos, será liberada automaticamente ao importar; se tiver, desfaça-a antes no histórico.</p>}
 
-      <label className="import-reference">Fatura de referência
+      <label className="import-reference">Fatura de referência (mês do vencimento)
         <select value={draft.cycle} onChange={e => {requestId.current = crypto.randomUUID(); setDraft({...draft, cycle: e.target.value})}}>
           {options.map(o => <option key={o.cycle} value={o.cycle}>{o.label}{o.cycle === draft.suggestedCycle ? ' (sugerida)' : ''}</option>)}
         </select>
-        <small>{draft.cycle === draft.suggestedCycle ? 'Sugerida ' + draft.reason + '.' : 'Você trocou a sugestão (' + cycleLabel(draft.suggestedCycle) + ').'}{draft.header.due && selected?.due && selected.due !== draft.header.due && ` O PDF vence em ${dateBR(draft.header.due)}; esta fatura vence em ${dateBR(selected.due)} no app.`}</small>
+        <small>{draft.cycle === draft.suggestedCycle ? 'Sugerida ' + draft.reason + '.' : 'Você trocou a sugestão (fatura de ' + referenceLabel(invoices, root, draft.suggestedCycle) + ').'}{draft.header.due && selected?.due && selected.due !== draft.header.due && ` O PDF vence em ${dateBR(draft.header.due)}; esta fatura vence em ${dateBR(selected.due)} no app.`}</small>
       </label>
 
       <div className="import-totals">
@@ -210,7 +210,7 @@ function ManualAdjust({db, household, data, invoices, reload}: {db: SupabaseClie
   }
   return <details className="manual-adjust"><summary>Ajustar o total de uma fatura manualmente</summary>
     <div className="form-grid">
-      <label>Fatura<select value={invoice} onChange={e => setInvoice(e.target.value)}>{invoices.map(i => <option key={i.id} value={i.id}>{cycleLabel(i.cycle)} · vence {dateBR(i.due_date)}</option>)}</select></label>
+      <label>Fatura<select value={invoice} onChange={e => setInvoice(e.target.value)}>{invoices.map(i => <option key={i.id} value={i.id}>Fatura de {cycleLabel(i.due_date)} · vence {dateBR(i.due_date)}</option>)}</select></label>
       <label>Total correto<input type="number" step=".01" value={total} placeholder={String(current)} onChange={e => setTotal(e.target.value)}/></label>
     </div>
     <p className="muted">No app: {brl(current)}{total !== '' && ` → ajuste de ${brl(Number(total) - current)}`}. Compras e pagamentos não mudam.</p>

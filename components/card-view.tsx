@@ -80,7 +80,7 @@ export function CardDetail({card, data, members, accounts, legacy = [], onBack, 
       <nav className="ccv-nav" aria-label="Escolher fatura">
         <button type="button" className="btn ghost icon" aria-label="Fatura anterior" disabled={index <= 0} onClick={() => setInvoiceId(invoices[index - 1].id)}><ChevronLeft size={18}/></button>
         <select aria-label="Fatura" value={invoice.id} onChange={e => setInvoiceId(e.target.value)}>
-          {invoices.map(i => <option key={i.id} value={i.id}>Fatura de {monthName(i.cycle)}</option>)}
+          {invoices.map(i => <option key={i.id} value={i.id}>Fatura de {monthName(i.due_date)}</option>)}
         </select>
         <button type="button" className="btn ghost icon" aria-label="Próxima fatura" disabled={index >= invoices.length - 1} onClick={() => setInvoiceId(invoices[index + 1].id)}><ChevronRight size={18}/></button>
       </nav>

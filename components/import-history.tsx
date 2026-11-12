@@ -45,7 +45,7 @@ export default function ImportHistory({db, household, data, cardId, reload, onCh
   }
 
   function start(id: string) {setOpen(id); setPreview(null); setError(''); setNotice(''); void act('preview_undo_import', id)}
-  const invoiceText = (id: string) => {const i = data.invoices.find(i => i.id === id); return i ? monthLabel(i.cycle.slice(0, 7)) : 'Fatura não disponível'};
+  const invoiceText = (id: string) => {const i = data.invoices.find(i => i.id === id); return i ? monthLabel(i.due_date.slice(0, 7)) : 'Fatura não disponível'};
   const unique = (list: string[] = []) => Array.from(new Set(list));
 
   return <section className="card space-y-3 import-history" aria-label="Histórico de importações">

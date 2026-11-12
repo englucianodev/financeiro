@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {readHeader} from '../.test-build/statement-banks.js';
-import {suggestReference,referenceOptions,classifyRows,importTotals,importPayload,pending,invoiceDates} from '../.test-build/statement-import.js';
+import {suggestReference,referenceOptions,referenceLabel,classifyRows,importTotals,importPayload,pending,invoiceDates} from '../.test-build/statement-import.js';
 import {parseStatement} from '../.test-build/statements.js';
 
 // Cabeçalhos sintéticos nos padrões C6 e Azul/Itaú (sem dados pessoais).
@@ -23,7 +23,9 @@ assert.deepEqual(invoiceDates(azulCard,'2026-10-01'),{closing:'2026-10-25',due:'
 const c6Card={id:'c6',closing_day:3,due_day:13,parent_card_id:null};
 assert.equal(suggestReference([],c6Card,c6,'2026-11-20').cycle,'2026-11-01');
 const options=referenceOptions([oct,nov],azulCard,'2026-10-01');
-assert.ok(options.some(o=>o.cycle==='2026-10-01'&&o.invoice?.id==='oct'&&o.label==='Outubro/2026 · fecha 25/10 · vence 01/11'));
+assert.ok(options.some(o=>o.cycle==='2026-10-01'&&o.invoice?.id==='oct'&&o.label==='Fatura de Novembro/2026 · fecha 25/10 · vence 01/11'),'Azul: a fatura que vence em 01/11 é a de novembro');
+assert.equal(referenceLabel([oct,nov],azulCard,'2026-10-01'),'Novembro/2026');assert.equal(referenceLabel([],azulCard,'2026-11-01'),'Dezembro/2026','sem fatura criada: calcula pelo vencimento');
+assert.equal(referenceLabel([],c6Card,'2026-11-01'),'Novembro/2026','C6 fecha e vence no mesmo mês');
 assert.ok(options.some(o=>o.cycle==='2026-04-01'&&!o.invoice));
 
 // Classificação: parcela existente vira vínculo; nova parcela lança restantes; à vista igual pede decisão; pagamento ignorado.
@@ -49,7 +51,7 @@ assert.equal(t.onlyInSystem.length,0);
 const payload=importPayload({fileName:'f.pdf',hash:'h',header:azul,rows:decided,cycle:'2026-11-01',suggestedCycle:'2026-11-01',reason:'',adjust:true},'azul',nov);
 assert.equal(payload.cycle,'2026-11-01');assert.equal(payload.invoice_id,'nov');assert.equal(payload.revision,0);assert.equal(payload.adjust_to_statement,true);assert.equal(payload.confirm_duplicates,true);
 assert.ok(payload.rows.every(r=>!('group' in r)&&!('note' in r)));
-console.log('Importação: cabeçalhos C6/Azul, mês de referência (caso dia 11 → outubro, vence 01/11), parcelas existentes sem duplicar, possíveis duplicados, totais e pedido OK');
+console.log('Importação: cabeçalhos C6/Azul, fatura pelo mês do vencimento (fecha em outubro, vence 01/11 = novembro), parcelas existentes sem duplicar, possíveis duplicados, totais e pedido OK');
 
 // Padrões reais do Itaú/Azul (dados sintéticos): parcela colada ao nome, total da fatura anterior,
 // cartão mascarado com pontos, adicional "(final NNNN)", produtos e serviços e próximas faturas.
