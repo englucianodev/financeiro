@@ -47,7 +47,7 @@ export default function AccountsPanel({db,household,accounts,members,reload,sche
  return <section id="accounts" className="card">
   <div className="section-heading"><h2>Contas</h2><button disabled={busy} onClick={()=>open(null)}>Adicionar conta</button></div>
   {transferHint&&<p role="status" className="muted">Toque em Editar na conta de origem para transferir.</p>}
-  {accounts.map(a=><article key={a.id} className="bank-card" style={{borderColor:a.color??palette[0],background:`linear-gradient(125deg,${a.color??palette[0]}22,var(--panel))`}}>
+  {accounts.map(a=><article key={a.id} className="bank-card" style={{borderLeftColor:a.color??palette[0]}}>
    <div><Wallet/><h3>{a.name} {a.is_primary?'★':''}</h3><small>{members.find(m=>m.user_id===a.owner_id)?.display_name} · {a.account_type==='investment'?'Investimento':a.account_type==='recurring'?'Despesas recorrentes':'Uso diário'}</small></div>
    <div className="bank-card-actions"><button className="balance-button" aria-label={'Ajustar saldo de '+a.name} title="Toque para ajustar o saldo" disabled={busy} onClick={()=>open(a,true)}>{brl(a.balance)}<Pencil size={14}/></button><button aria-label={'Editar conta '+a.name} disabled={busy} onClick={()=>open(a)}><Pencil size={15}/>Editar</button></div>
   </article>)}

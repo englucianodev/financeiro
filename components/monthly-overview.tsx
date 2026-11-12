@@ -14,7 +14,7 @@ export default function MonthlyOverview({events,categories,persistenceKey}:{even
  const slices:Slice[]=mode==='categories'?summary.categories:[{name:'Entradas',value:summary.income,color:'#94719f',percent:balanceTotal?summary.income/balanceTotal*100:0},{name:'Saídas',value:summary.expense,color:'#e67a59',percent:balanceTotal?summary.expense/balanceTotal*100:0}].filter(s=>s.value>0);
  const total=slices.reduce((sum,s)=>sum+Math.round(s.value*100),0)/100,circumference=2*Math.PI*88;let offset=0;
  return <section id="monthly-overview" className="card monthly-overview" aria-label="Análise mensal">
-  <div className="section-heading"><div><span className="eyebrow"><ChartPie size={15}/> CADA ESCOLHA CONTA</span><h2>Seu mês em números</h2></div><span className="overview-badge">Visão completa</span></div>
+  <div className="section-heading"><h2>Seu mês em números</h2></div>
   <MonthNav month={month} onChange={setMonth} context="do gráfico"/>
   <div className="segmented-control" role="group" aria-label="Tipo de análise"><button aria-pressed={mode==='categories'} onClick={()=>setMode('categories')}>Categorias</button><button aria-pressed={mode==='balance'} onClick={()=>setMode('balance')}>Entradas e saídas</button></div>
   <div className="overview-content"><div className="donut-panel"><div key={month+mode} className="donut-chart">
