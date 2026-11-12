@@ -4,7 +4,8 @@ import type {SupabaseClient} from '@supabase/supabase-js';
 import StatementTools from './statement-tools';
 import ImportHistory from './import-history';
 import Donut from './donut';
-import {CreditCard as CardIcon,Plus} from 'lucide-react';
+import {CreditCard as CardIcon,Plus,ArrowLeft,ChevronRight} from 'lucide-react';
+import MonthNav from './month-nav';
 import {CardDetail,LineEditor} from './card-view';
 import {brl,today} from '@/lib/money';
 import {type ViewAccount,type ViewEvent,monthLabel,moveMonth} from '@/lib/finance-view';
@@ -128,11 +129,39 @@ function currentInvoice(data:CreditData,root:Card){
 }
 
 export function CreditOverview({data,members,legacy=[]}:{data:CreditData;members:Member[];legacy?:ViewEvent[]}){
- const [month,setMonth]=useState(today().slice(0,7)),[person,setPerson]=useState('');
+ const [month,setMonth]=useState(today().slice(0,7)),[focus,setFocus]=useState<string|null>(null),top=useRef<HTMLElement>(null);
  if(!data.cards.length)return null;
+ const visible=data.cards.filter(c=>c.card_status!=='archived'||data.lines.some(l=>l.card_id===c.id));
+ const selected=focus?visible.find(c=>c.id===focus)??null:null;
+ const shown=selected?[selected]:visible;
+ const mine=(cardId:string)=>!selected||cardId===selected.id||rootCard(data.cards,selected).id===cardId;
  const alertDate=(days:number)=>new Date(Date.parse(today()+'T12:00:00Z')+days*86400000).toISOString().slice(0,10);
- const alerts=[...data.obligations.filter(o=>o.state==='pending'&&(!person||o.responsible_id===person||data.cards.find(c=>c.id===o.card_id)?.owner_id===person)&&o.due_date<=alertDate(3)).map(o=>({id:o.id,text:(o.mode==='manual'?'Lançamento manual pendente':'Cobrança automática pendente')+' · '+o.title+' · '+dateText(o.due_date)+(o.generation_error?' · '+o.generation_error:'')})),...data.invoices.filter(i=>i.closing_date>=today()&&i.closing_date<=alertDate(3)&&(!person||data.cards.find(c=>c.id===i.card_id)?.owner_id===person)).map(i=>({id:'close'+i.id,text:'Próximo fechamento · '+data.cards.find(c=>c.id===i.card_id)?.name+' · '+dateText(i.closing_date)})),...data.invoices.filter(i=>invoiceTotals(i,data.lines).balance>0&&i.due_date<=alertDate(7)&&(!person||data.cards.find(c=>c.id===i.card_id)?.owner_id===person)).map(i=>({id:'due'+i.id,text:'Fatura '+(i.due_date<today()?'atrasada':'a vencer')+' · '+data.cards.find(c=>c.id===i.card_id)?.name+' · '+dateText(i.due_date)}))];
- return <section className="card credit-overview" aria-label="Cartões de crédito no mês"><div className="section-heading"><h2>Cartões de crédito no mês</h2></div><div className="filters"><label>Mês dos cartões<input aria-label="Mês dos cartões" type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label><label>Titular dos cartões<select value={person} onChange={e=>setPerson(e.target.value)}><option value="">Todos</option>{members.map(m=><option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}</select></label></div>{alerts.length>0&&<aside className="credit-alerts" aria-label="Alertas de cartões">{alerts.map(a=><p key={a.id}>{a.text}</p>)}</aside>}<div className="credit-card-grid">{data.cards.filter(c=>(!person||c.owner_id===person)&&(c.card_status!=='archived'||data.lines.some(l=>l.card_id===c.id))).map(card=>{const l=cardLimit(data,card,legacy),summary=cardCategorySummary(data,card,month,legacy),invoice=data.invoices.find(i=>i.card_id===l.root.id&&i.cycle.startsWith(month)),t=invoice?invoiceTotals(invoice,data.lines):null;return <article className="credit-card-summary" key={card.id} style={{borderColor:card.color??'#765484'}}><h3>{card.name} · {members.find(m=>m.user_id===card.owner_id)?.display_name}</h3><p>{card.parent_card_id?'Adicional · limite e fatura compartilhados':'Limite próprio'} · {card.card_status==='archived'?'Arquivado':card.card_status==='blocked'?'Bloqueado':'Ativo'}</p><div className="credit-metrics"><span>Fatura<strong>{brl(t?.balance??0)}</strong></span><span>Limite total<strong>{brl(l.total)}</strong></span><span>Utilizado<strong>{brl(l.used)}</strong></span><span>Disponível<strong>{brl(l.available)}</strong></span></div><p>{l.percent.toLocaleString('pt-BR',{maximumFractionDigits:1})}% utilizado · {t?.status??'Sem fatura'}</p>{summary.categories.length?<Donut key={month} slices={summary.categories} label={'Despesas por categoria · '+card.name} suffix=" das despesas" note={false} center={{label:'Despesas do mês',value:brl(summary.expense),sub:summary.categories.length+(summary.categories.length>1?' categorias':' categoria')}}/>:<p className="muted credit-empty">Sem despesas neste mês.</p>}<small>Fechamento {invoice?dateText(invoice.closing_date):'dia '+l.root.closing_day} · Vencimento {invoice?dateText(invoice.due_date):'dia '+l.root.due_day}</small></article>})}</div></section>;
+ const cardName=(id:string)=>data.cards.find(c=>c.id===id)?.name;
+ const alerts=[
+  ...data.obligations.filter(o=>o.state==='pending'&&mine(o.card_id)&&o.due_date<=alertDate(3)).map(o=>({id:o.id,text:(o.mode==='manual'?'Lançamento manual pendente':'Cobrança automática pendente')+' · '+o.title+' · '+dateText(o.due_date)+(o.generation_error?' · '+o.generation_error:'')})),
+  ...data.invoices.filter(i=>mine(i.card_id)&&i.closing_date>=today()&&i.closing_date<=alertDate(3)).map(i=>({id:'close'+i.id,text:'Próximo fechamento · '+cardName(i.card_id)+' · '+dateText(i.closing_date)})),
+  ...data.invoices.filter(i=>mine(i.card_id)&&invoiceTotals(i,data.lines).balance>0&&i.due_date<=alertDate(7)).map(i=>({id:'due'+i.id,text:'Fatura '+(i.due_date<today()?'atrasada':'a vencer')+' · '+cardName(i.card_id)+' · '+dateText(i.due_date)}))];
+ const pick=(id:string|null)=>{setFocus(id);setTimeout(()=>top.current?.scrollIntoView({block:'start',behavior:'smooth'}),0)};
+ return <section ref={top} className="card credit-overview" aria-label="Cartões de crédito no mês">
+  <div className="section-heading"><h2>{selected?selected.name:'Cartões de crédito no mês'}</h2>{selected&&<button type="button" className="btn sm ghost" onClick={()=>pick(null)}><ArrowLeft size={16}/>Todos os cartões</button>}</div>
+  <MonthNav month={month} onChange={setMonth} context="dos cartões"/>
+  {alerts.length>0&&<aside className="credit-alerts" aria-label="Alertas de cartões">{alerts.map(a=><p key={a.id}>{a.text}</p>)}</aside>}
+  <div className={selected?'credit-card-single':'credit-card-grid'}>{shown.map(card=>{
+   const l=cardLimit(data,card,legacy),summary=cardCategorySummary(data,card,month,legacy),invoice=data.invoices.find(i=>i.card_id===l.root.id&&i.cycle.startsWith(month)),t=invoice?invoiceTotals(invoice,data.lines):null;
+   const owner=members.find(m=>m.user_id===card.owner_id)?.display_name;
+   const lines=selected&&invoice?data.lines.filter(x=>x.invoice_id===invoice.id&&x.card_id===card.id).sort((a,b)=>a.charge_date.localeCompare(b.charge_date)||a.title.localeCompare(b.title)):[];
+   return <article className="credit-card-summary" key={card.id} style={{borderColor:card.color??'#765484'}}>
+    <h3>{selected?<>{card.name} · {owner}</>:<button type="button" className="card-link" aria-label={'Ver detalhes do cartão '+card.name} onClick={()=>pick(card.id)}><span>{card.name} · {owner}</span><ChevronRight size={18} aria-hidden="true"/></button>}</h3>
+    <p>{card.parent_card_id?'Adicional · limite e fatura compartilhados':'Limite próprio'} · {card.card_status==='archived'?'Arquivado':card.card_status==='blocked'?'Bloqueado':'Ativo'}</p>
+    <div className="credit-metrics"><span>Fatura<strong>{brl(t?.balance??0)}</strong></span><span>Limite total<strong>{brl(l.total)}</strong></span><span>Utilizado<strong>{brl(l.used)}</strong></span><span>Disponível<strong>{brl(l.available)}</strong></span></div>
+    <p>{l.percent.toLocaleString('pt-BR',{maximumFractionDigits:1})}% utilizado · {t?.status??'Sem fatura'}</p>
+    {summary.categories.length?<Donut key={month} slices={summary.categories} label={'Despesas por categoria · '+card.name} suffix=" das despesas" note={false} center={{label:'Despesas do mês',value:brl(summary.expense),sub:summary.categories.length+(summary.categories.length>1?' categorias':' categoria')}}/>:<p className="muted credit-empty">Sem despesas neste mês.</p>}
+    <small>Fechamento {invoice?dateText(invoice.closing_date):'dia '+l.root.closing_day} · Vencimento {invoice?dateText(invoice.due_date):'dia '+l.root.due_day}</small>
+    {selected&&<div className="card-detail-lines"><h4>Lançamentos da fatura de {monthLabel(month)} <span className="ccv-count">{lines.length}</span></h4>
+     {lines.length?<ul className="row-list">{lines.map(x=>{const pur=x.purchase_id?data.purchases.find(p=>p.id===x.purchase_id):null;return <li key={x.id}><span className="rl-date">{dateText(x.charge_date).slice(0,5)}</span><span className="rl-main"><b>{x.title}</b><small>{x.category}{x.installment&&pur&&pur.installments>1?` · ${x.installment}/${pur.installments}`:''}{x.line_type==='fee'?' · encargo':Number(x.amount)<0?' · crédito':''}</small></span><strong className={Number(x.amount)<0?'positive':''}>{brl(Number(x.amount))}</strong></li>})}</ul>:<p className="muted">Nenhum lançamento nesta fatura.</p>}
+    </div>}
+   </article>})}</div>
+ </section>;
 }
 
 export function CreditOperationDialog(props:Common&{operation:Operation;onClose:()=>void}){

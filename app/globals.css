@@ -590,3 +590,33 @@ button.btn-small{min-height:var(--h-btn-sm);padding:4px 12px;font-size:var(--t-1
 .avg-control .segmented-control.mini button{white-space:nowrap;padding:4px 10px}
 @media(max-width:520px){.avg-control .segmented-control.mini{width:100%}.avg-control .segmented-control.mini button{padding:4px 6px;font-size:var(--t-13)}}
 .avg-control .segmented-control.mini button[aria-pressed=true]{background:var(--accent);color:var(--on-accent)}
+
+/* Imóveis em blocos, no estilo das contas */
+.property-tile.owned{border-top-color:var(--accent)}
+.property-tile.rented{border-top-color:var(--coral)}
+.property-tile.third_party{border-top-color:var(--muted)}
+.property-value{display:grid;gap:2px}
+.property-value span{font-size:var(--t-12);color:var(--muted)}
+.property-value strong{font:700 var(--t-26) var(--font-head);font-variant-numeric:tabular-nums}
+.property-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0}
+.property-facts div{background:var(--accent-soft);border-radius:var(--r-sm);padding:8px 10px}
+.property-facts dt{font-size:var(--t-12);color:var(--muted)}
+.property-facts dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums}
+.property-installments-note{font-size:var(--t-13);color:var(--muted)}
+.property-tile .acct-actions{margin-top:auto}
+
+/* Cartões no Início: nome do cartão é um link animado para ver só aquele cartão */
+.credit-overview .month-nav{margin-bottom:14px}
+.credit-overview .section-heading .btn{display:inline-flex;align-items:center;gap:6px}
+button.card-link{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-height:0;padding:2px 0;background:none!important;border:0;color:var(--accent);font:inherit;font-weight:700;text-align:left;cursor:pointer;position:relative}
+button.card-link span{background:linear-gradient(currentColor,currentColor) left bottom/0% 2px no-repeat;padding-bottom:2px;transition:background-size .3s ease}
+button.card-link svg{flex:none;animation:card-nudge 1.8s ease-in-out infinite}
+button.card-link:hover span,button.card-link:focus-visible span{background-size:100% 2px}
+button.card-link:hover svg,button.card-link:focus-visible svg{animation:none;transform:translateX(4px)}
+button.card-link:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:var(--r-sm)}
+@keyframes card-nudge{0%,60%,100%{transform:translateX(0)}30%{transform:translateX(5px)}}
+@media(prefers-reduced-motion:reduce){button.card-link svg{animation:none}button.card-link span{transition:none}}
+.credit-card-single .credit-card-summary{max-width:none}
+.card-detail-lines{display:grid;gap:8px;margin-top:8px;border-top:1px solid var(--line);padding-top:12px}
+.card-detail-lines h4{font-size:var(--t-16);display:flex;align-items:center;gap:8px}
+.property-grid+form,.card>p.muted+form{margin-top:12px;padding-top:16px;border-top:1px solid var(--line)}

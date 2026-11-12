@@ -98,7 +98,7 @@ export function ReportsView({events, accounts, members, properties, cards}: Repo
   const t = today(), year = t.slice(0, 4);
   const [from, setFrom] = useState(t.slice(0, 7) + '-01'), [to, setTo] = useState(year + '-12-31');
   const [person, setPerson] = useState(''), [account, setAccount] = useState(''), [category, setCategory] = useState(''), [property, setProperty] = useState(''), [card, setCard] = useState(''), [nature, setNature] = useState('all');
-  const presets: [string, string, string][] = [['Este mês', t.slice(0, 7) + '-01', new Date(Date.UTC(+year, +t.slice(5, 7), 0)).toISOString().slice(0, 10)], ['Próximos 3 meses', t.slice(0, 7) + '-01', new Date(Date.UTC(+year, +t.slice(5, 7) + 2, 0)).toISOString().slice(0, 10)], ['Este ano', year + '-01-01', year + '-12-31']];
+  const presets: [string, string, string][] = [['Este mês', t.slice(0, 7) + '-01', new Date(Date.UTC(+year, +t.slice(5, 7), 0)).toISOString().slice(0, 10)], ['Próximos 3 meses', t.slice(0, 7) + '-01', new Date(Date.UTC(+year, +t.slice(5, 7) + 2, 0)).toISOString().slice(0, 10)], ['Próximos 6 meses', t.slice(0, 7) + '-01', new Date(Date.UTC(+year, +t.slice(5, 7) + 5, 0)).toISOString().slice(0, 10)], ['Este ano', year + '-01-01', year + '-12-31'], ['Próximo ano', (+year + 1) + '-01-01', (+year + 1) + '-12-31']];
   const filtered = events.filter(e => isConsumptionEvent(e) && e.status !== 'cancelled' && e.due_date >= from && e.due_date <= to
     && (nature === 'all' || (nature === 'realized' ? (e.source === 'cc_charge' || (!e.source && e.status === 'settled')) : e.status === 'pending'))
     && (!card || e.card_id === card) && (!person || e.owner_id === person || e.card_owner_id === person) && (!account || e.account_id === account)
