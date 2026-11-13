@@ -279,15 +279,14 @@ test('planejamento: fluxo de caixa mensal, relatórios, simulador e histórico e
  await expect(page.locator('body')).toHaveJSProperty('scrollWidth',1280);
 });
 
-test('Mais sem Lançamentos; Receita fica em Transações e média de gastos entra no fluxo e no simulador',async({page})=>{
+test('Mais sem Lançamentos; Receita fica em Transações e despesas fora do cartão não viram média',async({page})=>{
  await page.setViewportSize({width:390,height:844});const m=currentDate().slice(0,7),prev=n=>{const d=new Date(m+'-01T12:00:00Z');d.setUTCMonth(d.getUTCMonth()-n);return d.toISOString().slice(0,7)};
  const rows=[1,2,3].map(n=>({id:'mk'+n,title:'Mercado '+n,due_date:prev(n)+'-10',status:'settled',kind:'expense',amount:600,paid_amount:600,owner_id:ana,account_id:'a',category:'Alimentação'}));
  await seed(page,{eventRows:rows});
  await page.getByRole('tab',{name:'Mais',exact:true}).click();await expect(page.locator('.more-menu').first().getByRole('button')).toHaveText(['Planejamento','Histórico','Personalização']);await expect(page.locator('#new-entry')).toHaveCount(0);
  await page.getByRole('button',{name:'Fluxo de caixa',exact:true}).click();const group=page.getByRole('group',{name:'Média de gastos'}).first();await expect(group.getByRole('button',{name:'Não usar'})).toHaveAttribute('aria-pressed','true');
- await group.getByRole('button',{name:'3 meses'}).click();await expect(page.locator('.avg-list summary').first()).toContainText('R$ 600,00/mês');await expect(page.locator('.recharts-legend-wrapper').first()).toContainText('Média de gastos');
- await page.locator('.avg-list summary').first().click();await page.screenshot({path:'test-results/fluxo-media-mobile.png',fullPage:true,animations:'disabled'});
- await page.getByRole('button',{name:'Simulador',exact:true}).click();await expect(page.getByRole('group',{name:'Média de gastos'}).getByRole('button',{name:'3 meses'})).toHaveAttribute('aria-pressed','true');await expect(page.locator('.sim')).toContainText('estimados pela média de gastos');await expect(page.locator('.sim .stat').nth(2)).toContainText('com média');
+ await group.getByRole('button',{name:'3 meses'}).click();await expect(page.locator('.avg-control').first()).toContainText('Nenhuma fatura de cartão');await expect(page.locator('.recharts-legend-wrapper').first()).not.toContainText('Média');
+ await page.getByRole('button',{name:'Simulador',exact:true}).click();await expect(page.getByRole('group',{name:'Média de gastos'}).getByRole('button',{name:'3 meses'})).toHaveAttribute('aria-pressed','true');await expect(page.locator('.sim')).not.toContainText('estimados pela média');
  await page.getByRole('tab',{name:'Transações',exact:true}).click();await page.locator('.transaction-actions .tx-toggle').nth(2).click();await expect(page.locator('#tx-form #new-entry select[aria-label="Tipo de lançamento"]')).toHaveValue('income');
 });
 test('imóveis em blocos lado a lado e relatório com próximos 6 meses e próximo ano',async({page})=>{

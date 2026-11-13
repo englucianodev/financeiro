@@ -202,3 +202,12 @@ test('muda a categoria de vários lançamentos do cartão de uma vez (à vista e
  expect(calls.map(c=>c.p_data).sort((a,b)=>a.line_id.localeCompare(b.line_id))).toEqual([{line_id:'l10',category:'Lazer',scope:'purchase'},{line_id:'line',category:'Lazer',scope:'purchase'}]);
  expect(new Set(calls.map(c=>c.p_id)).size).toBe(2);await expect(page.getByRole('region',{name:'Lançamentos selecionados'})).toHaveCount(0);
 });
+
+test('fluxo de caixa e simulador completam as faturas dos cartões pela média das anteriores',async({page})=>{
+ await page.setViewportSize({width:390,height:844});const state=fixture(),m=month(),prev=n=>{const d=new Date(m+'-01T12:00:00Z');d.setUTCMonth(d.getUTCMonth()-n);return d.toISOString().slice(0,7)};
+ for(const [n,v] of [[1,300],[2,500]]){state.cc_invoices.push({id:'old'+n,card_id:'c1',cycle:prev(n)+'-01',closing_date:prev(n)+'-28',due_date:prev(n)+'-28',revision:0});state.cc_lines.push({...state.cc_lines[0],id:'old-line'+n,invoice_id:'old'+n,purchase_id:null,amount:v,paid:v})}
+ await seed(page,state);await page.getByRole('tab',{name:'Mais',exact:true}).click();await page.getByRole('button',{name:'Planejamento',exact:true}).click();await page.getByRole('button',{name:'Fluxo de caixa',exact:true}).click();
+ await page.getByRole('group',{name:'Média de gastos'}).getByRole('button',{name:'3 meses'}).click();const box=page.locator('.avg-control');await expect(box.locator('summary')).toContainText('R$ 400,00/mês em 1 cartão');await box.locator('summary').click();await expect(box).toContainText('Nubank');await expect(box).toContainText('base: 2 fatura(s)');
+ await expect(page.locator('.recharts-legend-wrapper').first()).toContainText('Média dos cartões');await page.screenshot({path:'test-results/fluxo-media-cartoes.png',fullPage:true,animations:'disabled'});
+ await page.getByRole('button',{name:'Simulador',exact:true}).click();await expect(page.locator('.sim')).toContainText('estimados pela média dos cartões');
+});

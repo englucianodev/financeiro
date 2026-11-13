@@ -1,28 +1,30 @@
 import assert from 'node:assert/strict';
-import {categoryAverages,averageFlows} from '../.test-build/forecast.js';
-const ev=(id,cat,date,amount,extra={})=>({id,title:id,category:cat,due_date:date,amount,paid_amount:amount,status:'settled',kind:'expense',account_id:'a',owner_id:'o',...extra});
-const events=[
- ev('m1','Mercado','2026-08-05',600),ev('m2','Mercado','2026-09-05',900),ev('m3','Mercado','2026-10-05',900),
- ev('l1','Lazer','2026-10-10',300),
- ev('old','Mercado','2026-04-05',5000), // fora da janela de 3 meses
- ev('inc','Salário','2026-10-05',8000,{kind:'income'}),
- ev('can','Lazer','2026-09-10',999,{status:'cancelled'}),
- ev('cur','Mercado','2026-11-03',250),                       // já gasto no mês atual
- ev('fut','Lazer','2026-12-10',500,{status:'pending',paid_amount:0}), // já previsto acima da média
-];
-const avg=categoryAverages(events,3,'2026-11-12');
-assert.deepEqual(avg.map(a=>[a.category,a.average,a.months]),[['Mercado',800,3],['Lazer',100,3]]);
-const flows=averageFlows(events,'acc',3,3,'2026-11-12');
-const pick=(c,m)=>flows.find(f=>f.category===c&&f.due_date.startsWith(m));
-assert.equal(pick('Mercado','2026-11').amount,-550,'desconta o que já foi gasto no mês');
-assert.equal(pick('Mercado','2026-11').due_date,'2026-11-15');
-assert.equal(pick('Mercado','2026-12').amount,-800);
-assert.equal(pick('Lazer','2026-12'),undefined,'mês com previsão maior que a média não ganha extra');
-assert.equal(pick('Lazer','2027-01').amount,-100);
-assert.ok(flows.every(f=>f.account_id==='acc'&&f.status==='pending'&&f.amount<0));
-assert.equal(averageFlows(events,'acc',3,3,'2026-11-20').find(f=>f.due_date.startsWith('2026-11')).due_date,'2026-11-20','mês atual após o dia 15 usa hoje');
-assert.deepEqual(categoryAverages([],3,'2026-11-12'),[]);
-assert.deepEqual(averageFlows(events,'',3),[]);
-// app novo: só 1 mês de dados não é diluído por 3
-assert.equal(categoryAverages([ev('x','Mercado','2026-10-02',400)],3,'2026-11-12')[0].average,400);
-console.log('Previsão por média de categoria OK');
+import {cardAverages,cardAverageFlows} from '../.test-build/forecast.js';
+// Cartão Azul: fecha 24, vence 1 (fatura de novembro fecha 24/10). Cartão C6: fecha 4, vence 10.
+const azul={id:'az',name:'Azul',owner_id:'o',account_id:'acc-a',closing_day:24,due_day:1,parent_card_id:null,card_status:'active'};
+const adic={id:'az2',name:'Azul adicional',owner_id:'o',account_id:'acc-a',closing_day:24,due_day:1,parent_card_id:'az',card_status:'active'};
+const c6={id:'c6',name:'C6',owner_id:'o',account_id:'acc-b',closing_day:4,due_day:10,parent_card_id:null,card_status:'active'};
+const inv=(card,cycle,closing,due)=>({id:card+cycle,card_id:card,cycle:cycle+'-01',closing_date:closing,due_date:due,revision:0});
+const invoices=[inv('az','2026-07','2026-07-24','2026-08-01'),inv('az','2026-08','2026-08-24','2026-09-01'),inv('az','2026-09','2026-09-24','2026-10-01'),inv('az','2026-10','2026-10-24','2026-11-01'),inv('az','2026-11','2026-11-24','2026-12-01'),inv('az','2026-12','2026-12-24','2027-01-01'),
+ inv('c6','2026-10','2026-10-04','2026-10-10'),inv('c6','2026-11','2026-11-04','2026-11-10'),inv('c6','2026-12','2026-12-04','2026-12-10')];
+let n=0;const line=(invoice,amount,card='az',type='principal')=>({id:'l'+(n++),invoice_id:invoice,card_id:card,purchase_id:null,responsible_id:'o',title:'x',category:'y',amount,paid:0,line_type:type,installment:null,charge_date:'2026-01-01'});
+const lines=[line('az2026-08',1000),line('az2026-08',200,'az2','principal'),line('az2026-09',1500),line('az2026-09',30,'az','fee'),line('az2026-09',-100,'az','refund'),line('az2026-07',1000),line('az2026-10',900),
+ line('az2026-11',700), // fatura de dezembro (aberta) já tem 700 em parcelas
+ line('az2026-12',2000), // fatura de janeiro já tem mais que a média
+ line('c62026-10',400),line('c62026-11',800)];
+const data={cards:[azul,adic,c6],invoices,lines,purchases:[],obligations:[],payments:[],recurrences:[]};
+const today='2026-11-12';
+const avg=cardAverages(data,3,today);
+// Janela de 3 meses antes de novembro pelo VENCIMENTO: ago, set, out (a fatura que vence em novembro não entra)
+assert.deepEqual(avg.map(a=>[a.name,a.average,a.invoices]),[['Azul',1210,3],['C6',400,1]],'média por cartão, adicional somado ao principal, encargo e estorno contam');
+const flows=cardAverageFlows(data,3,3,today);
+const f=(card,ym)=>flows.find(x=>x.card_id===card&&x.due_date.startsWith(ym));
+assert.equal(f('az','2026-11'),undefined,'fatura de novembro (fechou 24/10) já é conhecida');
+assert.equal(f('az','2026-12').amount,-510,'dezembro: média − parcelas já lançadas');
+assert.equal(f('az','2026-12').due_date,'2026-12-01');assert.equal(f('az','2026-12').account_id,'acc-a','conta que paga o cartão');
+assert.equal(f('az','2027-01'),undefined,'janeiro já passa da média');
+assert.equal(f('c6','2026-11'),undefined,'C6 de novembro já fechou (04/11)');
+assert.equal(f('c6','2026-12').amount,-400);assert.equal(f('c6','2027-01').due_date,'2027-01-10','sem fatura criada: vencimento pelo dia do cartão');
+assert.ok(flows.every(x=>x.status==='pending'&&x.amount<0&&x.id.startsWith('avg-')));
+assert.deepEqual(cardAverages({...data,lines:[]},3,today),[]);
+console.log('Previsão pela média das faturas dos cartões OK');

@@ -1,48 +1,53 @@
-// Previsão por média: quanto se gasta, em média, por categoria nos meses anteriores,
-// para completar os meses futuros onde ainda não há lançamentos suficientes.
-import {isConsumptionEvent, type ViewEvent} from './finance-view';
+// Previsão pela média dos CARTÕES DE CRÉDITO.
+// Despesas fora do cartão (fixas, recorrentes, avulsas) entram só como estão cadastradas: não se tira média delas.
+// Os cartões variam muito; por isso cada fatura futura é completada até a média das faturas anteriores
+// daquele cartão (à vista + parcelas + encargos), descontando o que já está lançado nela (parcelas futuras etc.).
+import {invoiceMonth, invoiceTotals, type Card, type CreditData} from './credit';
 import {today} from './money';
 
-export type CategoryAverage = {category: string; average: number; months: number};
-export type AverageFlow = {id: string; title: string; category: string; account_id: string; amount: number; due_date: string; status: 'pending'; average: true};
+export type CardAverage = {card_id: string; name: string; average: number; invoices: number};
+export type AverageFlow = {id: string; title: string; card_id: string; account_id: string; amount: number; due_date: string; status: 'pending'; average: true};
 
 function addMonths(ym: string, n: number) {const d = new Date(ym + '-01T12:00:00Z'); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 7)}
-const name = (e: {category?: string}) => e.category?.trim() || 'Outros';
-const counts = (e: ViewEvent) => isConsumptionEvent(e) && e.status !== 'cancelled' && e.kind === 'expense';
+const cents = (n: number) => Math.round(Number(n) * 100);
+function dueIn(ym: string, day: number) {
+  const [y, m] = ym.split('-').map(Number), last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return ym + '-' + String(Math.min(day, last)).padStart(2, '0');
+}
+/** Cartões principais (o adicional divide a fatura com o principal). */
+const roots = (data: CreditData) => data.cards.filter(c => !c.parent_card_id && c.card_status !== 'archived');
 
 /**
- * Média mensal de despesas por categoria nos `lookback` meses completos anteriores ao mês atual.
- * Divide pelos meses que tiveram alguma despesa (um app recém-começado não dilui a média com meses vazios).
+ * Média das faturas de cada cartão nos `lookback` meses anteriores ao atual (pelo mês do vencimento).
+ * Divide pelas faturas que tiveram lançamentos, para um cartão novo não ter a média diluída por meses vazios.
  */
-export function categoryAverages(events: ViewEvent[], lookback = 3, current = today()): CategoryAverage[] {
+export function cardAverages(data: CreditData, lookback = 3, current = today()): CardAverage[] {
   const start = addMonths(current.slice(0, 7), -lookback), end = current.slice(0, 7);
-  const past = events.filter(e => counts(e) && e.due_date.slice(0, 7) >= start && e.due_date.slice(0, 7) < end);
-  const months = new Set(past.map(e => e.due_date.slice(0, 7))).size;
-  if (!months) return [];
-  const totals = new Map<string, number>();
-  for (const e of past) totals.set(name(e), (totals.get(name(e)) ?? 0) + Math.round(Number(e.amount) * 100));
-  return Array.from(totals, ([category, c]) => ({category, average: Math.round(c / months) / 100, months}))
-    .filter(a => a.average > 0).sort((a, b) => b.average - a.average);
+  return roots(data).map(card => {
+    const past = data.invoices.filter(i => i.card_id === card.id && invoiceMonth(i) >= start && invoiceMonth(i) < end && data.lines.some(l => l.invoice_id === i.id));
+    const total = past.reduce((s, i) => s + cents(invoiceTotals(i, data.lines, current).total), 0);
+    return {card_id: card.id, name: card.name, average: past.length ? Math.round(total / past.length) / 100 : 0, invoices: past.length};
+  }).filter(a => a.average > 0).sort((a, b) => b.average - a.average);
 }
 
 /**
- * Lançamentos estimados (não gravados) para os próximos `horizon` meses, incluindo o atual.
- * Em cada mês e categoria só entra a diferença entre a média e o que já está lançado
- * (pago, previsto ou no cartão), para não contar duas vezes.
+ * Valores estimados (não gravados) para as faturas dos próximos `horizon` meses, incluindo o atual.
+ * Para cada cartão e mês: média − o que já está na fatura. Fatura já fechada não recebe estimativa.
+ * O valor entra na data de vencimento da fatura, na conta que paga o cartão.
  */
-export function averageFlows(events: ViewEvent[], accountId: string, horizon = 12, lookback = 3, current = today()): AverageFlow[] {
-  if (!accountId) return [];
-  const averages = categoryAverages(events, lookback, current);
-  const out: AverageFlow[] = [];
-  const first = current.slice(0, 7);
-  for (let i = 0; i < horizon; i++) {
-    const ym = addMonths(first, i);
-    for (const a of averages) {
-      const known = events.filter(e => counts(e) && name(e) === a.category && e.due_date.slice(0, 7) === ym).reduce((s, e) => s + Math.round(Number(e.amount) * 100), 0);
-      const missing = Math.round(a.average * 100) - known;
+export function cardAverageFlows(data: CreditData, horizon = 12, lookback = 3, current = today()): AverageFlow[] {
+  const averages = cardAverages(data, lookback, current), out: AverageFlow[] = [];
+  for (const a of averages) {
+    const card = data.cards.find(c => c.id === a.card_id) as Card;
+    for (let i = 0; i < horizon; i++) {
+      const ym = addMonths(current.slice(0, 7), i);
+      const invoice = data.invoices.find(v => v.card_id === card.id && invoiceMonth(v) === ym);
+      const due = invoice?.due_date ?? dueIn(ym, card.due_day);
+      if (due < current || (invoice && invoice.closing_date < current)) continue; // já venceu ou já fechou: valor conhecido
+      const known = invoice ? cents(invoiceTotals(invoice, data.lines, current).total) : 0;
+      const missing = cents(a.average) - known;
       if (missing <= 0) continue;
-      const mid = ym + '-15', due = i === 0 && mid < current ? current : mid;
-      out.push({id: `avg-${a.category}-${ym}`, title: 'Média · ' + a.category, category: a.category, account_id: accountId, amount: -missing / 100, due_date: due, status: 'pending', average: true});
+      out.push({id: `avg-${card.id}-${ym}`, title: 'Média · ' + card.name, card_id: card.id, account_id: card.account_id, amount: -missing / 100, due_date: due, status: 'pending', average: true});
     }
   }
   return out;

@@ -5,28 +5,29 @@ import {ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Ca
 import {X} from 'lucide-react';
 import {brl, project, today} from '@/lib/money';
 import {alphabetic, isConsumptionEvent, monthLabel, type ViewEvent} from '@/lib/finance-view';
-import {averageFlows, categoryAverages} from '@/lib/forecast';
+import {cardAverageFlows, cardAverages} from '@/lib/forecast';
+import {emptyCredit, type CreditData} from '@/lib/credit';
 
 type Account = {id: string; name: string; owner_id: string; balance: number; account_type?: string; color?: string};
 type Member = {user_id: string; display_name: string};
 export type Flow = {id: string; account_id: string; amount: number; due_date: string; status: string};
 const COLORS = {in: '#2f9e6e', out: '#e0664f', avg: '#f2b29c', line: '#5b60d6', area: '#5b60d6'};
-export type AverageSetting = {events: ViewEvent[]; months: number; setMonths: (n: number) => void; account: string};
+export type AverageSetting = {data?: CreditData; months: number; setMonths: (n: number) => void};
 const isAvg = (f: {id: string}) => f.id.startsWith('avg-');
 
-/** Liga/desliga a previsão pela média de gastos por categoria e mostra as médias usadas. */
+/** Liga/desliga a previsão pela média das faturas dos cartões e mostra as médias usadas. */
 function AverageControl({setting}: {setting: AverageSetting}) {
-  const list = useMemo(() => setting.months ? categoryAverages(setting.events, setting.months) : [], [setting.events, setting.months]);
+  const list = useMemo(() => setting.months && setting.data ? cardAverages(setting.data, setting.months) : [], [setting.data, setting.months]);
   const total = list.reduce((s, a) => s + cents(a.average), 0) / 100;
   return <div className="avg-control">
     <div className="avg-head">
-      <div><b>Média de gastos por categoria</b><small>Completa os meses futuros com o que vocês costumam gastar.</small></div>
+      <div><b>Média dos cartões de crédito</b><small>Prevê as próximas faturas pela média das anteriores. Despesas fora do cartão entram como estão cadastradas.</small></div>
       <div className="segmented-control mini" role="group" aria-label="Média de gastos">{([[0, 'Não usar'], [3, '3 meses'], [6, '6 meses'], [12, '12 meses']] as const).map(([n, l]) => <button key={n} type="button" aria-pressed={setting.months === n} onClick={() => setting.setMonths(n)}>{l}</button>)}</div>
     </div>
-    {setting.months > 0 && (list.length ? <details className="avg-list"><summary>Média de {brl(total)}/mês em {list.length} categoria(s) · base: {list[0].months} mês(es) com gastos</summary>
-      <ul className="row-list">{list.map(a => <li key={a.category}><span className="rl-main"><b>{a.category}</b></span><strong>{brl(a.average)}/mês</strong></li>)}</ul>
-      <p className="muted">Em cada mês entra só o que falta para chegar à média, descontando o que já está lançado (pago, previsto ou no cartão) naquela categoria. Nada é gravado.</p>
-    </details> : <p className="muted">Sem despesas nos últimos {setting.months} meses para calcular a média.</p>)}
+    {setting.months > 0 && (list.length ? <details className="avg-list"><summary>Média de {brl(total)}/mês em {list.length} cartão(ões)</summary>
+      <ul className="row-list">{list.map(a => <li key={a.card_id}><span className="rl-main"><b>{a.name}</b><small>base: {a.invoices} fatura(s)</small></span><strong>{brl(a.average)}/fatura</strong></li>)}</ul>
+      <p className="muted">Média das faturas (compras à vista, parcelas e encargos) que venceram nos últimos {setting.months} meses. Em cada fatura futura entra só o que falta para chegar à média, descontando o que já está nela (parcelas já lançadas). Faturas já fechadas não mudam. O valor cai no vencimento da fatura, na conta que paga o cartão. Nada é gravado.</p>
+    </details> : <p className="muted">Nenhuma fatura de cartão nos últimos {setting.months} meses para calcular a média.</p>)}
   </div>;
 }
 const cents = (n: number) => Math.round(n * 100);
@@ -59,7 +60,7 @@ export function monthlyCashFlow(accounts: Account[], flows: Flow[], months = 12,
 
 export function CashFlowView({accounts, flows, average}: {accounts: Account[]; flows: Flow[]; average: AverageSetting}) {
   const [months, setMonths] = useState(12);
-  const avg = useMemo(() => average.months ? averageFlows(average.events, average.account, months, average.months) : [], [average.events, average.account, average.months, months]);
+  const avg = useMemo(() => average.months ? cardAverageFlows(average.data ?? emptyCredit(), months, average.months) : [], [average.data, average.months, months]);
   const rows = useMemo(() => monthlyCashFlow(accounts, [...flows, ...avg], months), [accounts, flows, avg, months]);
   const now = accounts.reduce((s, a) => s + cents(Number(a.balance)), 0) / 100;
   const low = rows.reduce((m, r) => r.balance < m.balance ? r : m, rows[0]);
@@ -84,12 +85,12 @@ export function CashFlowView({accounts, flows, average}: {accounts: Account[]; f
           <ReferenceLine y={0} stroke="var(--muted)"/>
           <Bar name="Entradas" dataKey="income" fill={COLORS.in} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false}/>
           <Bar name="Saídas" dataKey="expense" stackId="out" fill={COLORS.out} radius={avg.length ? [0, 0, 0, 0] : [4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false}/>
-          {avg.length > 0 && <Bar name="Média de gastos" dataKey="average" stackId="out" fill={COLORS.avg} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false}/>}
+          {avg.length > 0 && <Bar name="Média dos cartões" dataKey="average" stackId="out" fill={COLORS.avg} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={false}/>}
           <Line name="Saldo acumulado" dataKey="balance" stroke={COLORS.line} strokeWidth={3} dot={{r: 3}} isAnimationActive={false}/>
         </ComposedChart>
       </ResponsiveContainer>
     </div>
-    <p className="muted">Previsto com o saldo das contas disponíveis (sem investimentos), os lançamentos pendentes e as transferências agendadas{avg.length ? ', mais a média de gastos por categoria' : ''}. Atrasados contam no mês atual.</p>
+    <p className="muted">Previsto com o saldo das contas disponíveis (sem investimentos), os lançamentos pendentes e as transferências agendadas{avg.length ? ', mais a média dos cartões' : ''}. Atrasados contam no mês atual.</p>
   </div>;
 }
 
@@ -155,7 +156,7 @@ export function SimulatorView({accounts, flows, average, until, setUntil, maxDat
   const t = today();
   const days = Math.max(0, Math.min(365, Math.round((Date.parse(until + 'T12:00:00Z') - Date.parse(t + 'T12:00:00Z')) / 86400000)));
   const avgMonthsAhead = Math.max(1, (+until.slice(0, 4) - +t.slice(0, 4)) * 12 + (+until.slice(5, 7) - +t.slice(5, 7)) + 1);
-  const avg = useMemo(() => average.months ? averageFlows(average.events, average.account, avgMonthsAhead, average.months).filter(f => f.due_date <= until) : [], [average.events, average.account, average.months, avgMonthsAhead, until]);
+  const avg = useMemo(() => average.months ? cardAverageFlows(average.data ?? emptyCredit(), avgMonthsAhead, average.months).filter(f => f.due_date <= until) : [], [average.data, average.months, avgMonthsAhead, until]);
   const all = [...flows, ...avg, ...scenarios];
   const sim = useMemo(() => project(accounts, all, days), [accounts, flows, avg, scenarios, days]);
   const avgTotal = -avg.reduce((s, f) => s + cents(f.amount), 0) / 100;
@@ -190,7 +191,7 @@ export function SimulatorView({accounts, flows, average, until, setUntil, maxDat
         <div className="stat"><span>Saldo em {dBR(until).slice(0, 5)}</span><strong className={end < 0 ? 'negative' : ''}>{brl(end)}</strong></div>
       </div>
       <AverageControl setting={average}/>
-      {avg.length > 0 && <p className="muted">Inclui {brl(avgTotal)} estimados pela média de gastos até {dBR(until)}.</p>}
+      {avg.length > 0 && <p className="muted">Inclui {brl(avgTotal)} estimados pela média dos cartões até {dBR(until)}.</p>}
       <div className={'sim-alert ' + (deficit ? 'bad' : 'ok')}>{deficit ? <>Alguma conta fica negativa em <b>{dBR(deficit.date)}</b>. Menor saldo total: <b>{brl(min.total)}</b> em {dBR(min.date)}.</> : <>Nenhuma conta fica negativa até {dBR(until)}. Menor saldo total: <b>{brl(min.total)}</b> em {dBR(min.date)}.</>}</div>
       <div className="chart-box" role="img" aria-label="Saldo total simulado dia a dia">
         <ResponsiveContainer width="100%" height={280}>

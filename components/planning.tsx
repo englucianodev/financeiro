@@ -27,8 +27,7 @@ export default function Planning({creditData,view,persistenceKey,transfers,db,ho
  const tab=view==='calendar'?'Calendário':storedTab==='Calendário'||storedTab==='Cartões'?'Fluxo de caixa':storedTab==='Patrimônio'?'Imóveis':storedTab;
  const available=accounts.filter(a=>a.account_type!=='investment');
  const [avgMonths,setAvgMonths]=useViewState('financas:view:'+persistenceKey+':avg-months',0,(v):v is number=>v===0||v===3||v===6||v===12);
- const avgAccount=((available as (Account&{is_primary?:boolean})[]).find(a=>a.is_primary)??available[0])?.id??'';
- const average={events,months:avgMonths,setMonths:setAvgMonths,account:avgAccount};
+ const average={data:creditData,months:avgMonths,setMonths:setAvgMonths};
  const [properties,setProperties]=useState<Property[]>([]),[cards,setCards]=useState<Card[]>([]);
  const [month,setMonth]=useViewState('financas:view:'+persistenceKey+':month',today().slice(0,7),validMonth),[day,setDay]=useViewState('financas:view:'+persistenceKey+':day',today(),validDate);
  const [person,setPerson]=useState(''),[account,setAccount]=useState(''),[category,setCategory]=useState(''),[property,setProperty]=useState('');
