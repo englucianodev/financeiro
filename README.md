@@ -173,3 +173,7 @@ Instruções, configuração manual do Resend/agendador, arquivos e limitações
 ## Histórico e desfazimento de importações (migration 024)
 
 Conversão à vista/parcelada, correção de sequência e movimentação entre meses/anos preservam os vínculos e atualizam as faturas. O histórico inclui uma prévia de desfazimento por UUID, com bloqueio de pagamentos, edições, conciliações e dependências posteriores. Importações antigas sem origem comprovada exigem revisão, sem exclusão por aproximação. Instruções: [Importações — ciclo de vida](docs/IMPORTACOES_CICLO_DE_VIDA.md). Teste específico: `npm run test:imports`. Aplicar a migration 024 após 001–023; nenhuma variável nova.
+
+## Aplicativo Android
+
+A pasta [android](android/README.md) contém o aplicativo Duo conectado ao mesmo site e Supabase. Gere o instalador com `npm run android:build` e execute os testes locais com `npm run android:test`. O APK fica em `android/build/outputs/Duo-Android.apk`; a assinatura privada permanece em pasta ignorada pelo Git. Não há migração ou variável de ambiente nova no site.

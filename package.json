@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "android:build": "powershell -NoProfile -ExecutionPolicy Bypass -File android/build-apk.ps1 -Release",
+    "android:debug": "powershell -NoProfile -ExecutionPolicy Bypass -File android/build-apk.ps1",
+    "android:test": "powershell -NoProfile -ExecutionPolicy Bypass -File android/test.ps1",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",

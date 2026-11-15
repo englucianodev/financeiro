@@ -12,3 +12,7 @@ playwright-report/
 public/vendor/
 
 .ocr-results*/
+
+# Rascunhos e pacotes de divulgação (mantidos só localmente)
+Claude outputs/
+divulgacao/*.zip

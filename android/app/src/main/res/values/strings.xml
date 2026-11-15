@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Duo</string>
+    <string name="site_url">https://www.luciano.net.br/</string>
+    <string name="site_host">www.luciano.net.br</string>
+</resources>

@@ -1,0 +1,29 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'br.net.luciano.duo'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'br.net.luciano.duo'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '1.0.0'
+    }
+    buildFeatures { buildConfig true }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    if (rootProject.file('.local-signing/duo-development.jks').exists()) {
+        signingConfigs { debug {
+            storeFile rootProject.file('.local-signing/duo-development.jks')
+            storePassword 'android'; keyAlias 'androiddebugkey'; keyPassword 'android'
+        } }
+    }
+    if (rootProject.file('.local-signing/duo-release.p12').exists()) {
+        signingConfigs { release {
+            storeFile rootProject.file('.local-signing/duo-release.p12')
+            storePassword rootProject.file('.local-signing/duo-release-password.txt').text.trim()
+            keyAlias 'duorelease'
+            keyPassword rootProject.file('.local-signing/duo-release-password.txt').text.trim()
+        } }
+        buildTypes { release { signingConfig signingConfigs.release } }
+    }
+}
