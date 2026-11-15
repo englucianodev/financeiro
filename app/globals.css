@@ -662,3 +662,11 @@ button.app-banner-close:hover:not(:disabled){background:#ffffff1f!important;colo
 .app-download-note>svg{flex:none;margin-top:2px;color:var(--accent)}
 .app-download-note p{margin:0;font-size:var(--t-13)}
 .app-download>p>a{color:var(--accent);font-weight:600}
+
+/* Telas de toque (celular e app Android): listas sem rolagem própria. Com rolagem interna, arrastar o
+   dedo sobre a lista rolava só a lista e, no fim dela, a página "travava" (overscroll-behavior:contain).
+   Assim o gesto sempre rola a página. No computador (mouse) as listas continuam com altura limitada. */
+@media (pointer:coarse){
+ .scroll-list,.pending-scroll,.category-list{max-height:none;overflow:visible;overscroll-behavior:auto}
+ .row-list{max-height:none;overflow:clip;overscroll-behavior:auto}
+}
