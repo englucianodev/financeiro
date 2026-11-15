@@ -176,4 +176,4 @@ Conversão à vista/parcelada, correção de sequência e movimentação entre m
 
 ## Aplicativo Android
 
-A pasta [android](android/README.md) contém o aplicativo Duo conectado ao mesmo site e Supabase. Gere o instalador com `npm run android:build` e execute os testes locais com `npm run android:test`. O APK fica em `android/build/outputs/Duo-Android.apk`; a assinatura privada permanece em pasta ignorada pelo Git. Não há migração ou variável de ambiente nova no site.
+A pasta [android](android/README.md) contém o aplicativo Duo conectado ao mesmo site e Supabase. Gere o instalador com `npm run android:build` e execute os testes locais com `npm run android:test`. O APK fica em `android/build/outputs/Duo-Android.apk`; a assinatura privada permanece em pasta ignorada pelo Git. Não há migração ou variável de ambiente nova no site. O APK fica disponível em `/download/Duo-Android.apk` e a página de instalação em `/android`; quem abre o site no navegador de um Android vê um aviso com o link.

@@ -70,3 +70,7 @@ Referências de implementação: [segurança de WebView](https://developer.andro
 - Limite da validação: sem teste autenticado de transações reais e sem homologação em aparelho físico. O APK usa a mesma aplicação HTTPS e as mesmas regras do site; a pessoa deve entrar com sua conta e grupo já existentes.
 
 O APK é intencionalmente pequeno: o WebView do Android apresenta a aplicação publicada. Ele não contém cópia do frontend financeiro nem dados do banco; alterações futuras publicadas no site aparecem também no aplicativo. Mudanças na camada Android exigem recompilar e instalar uma atualização assinada com a mesma chave.
+
+## Distribuição pelo site
+
+`npm run android:build` também copia a release para `public/download/Duo-Android.apk`. A página `/android` do site explica a instalação, e quem abre o site no navegador de um Android vê um aviso no topo com o link (não aparece no computador nem dentro do próprio app; fechado, volta depois de 30 dias). Depois de gerar uma nova versão, faça commit do APK em `public/download` e publique o site.

@@ -91,4 +91,11 @@ if ($Release) {
 Run $java @('-jar',(Join-Path $tools 'lib\apksigner.jar'),'verify','--verbose',$apk)
 Run (Join-Path $tools 'zipalign.exe') @('-c','4',$apk)
 Write-Output "APK gerado: $apk"
+if ($Release) {
+    # Publica a release no site (/download/Duo-Android.apk), usada pela página /android.
+    $publicDir = Join-Path (Split-Path $project -Parent) 'public\download'
+    New-Item -ItemType Directory -Force -Path $publicDir | Out-Null
+    Copy-Item -LiteralPath $apk -Destination (Join-Path $publicDir 'Duo-Android.apk') -Force
+    Write-Output "Copiado para o site: $publicDir\Duo-Android.apk"
+}
 Get-FileHash -LiteralPath $apk -Algorithm SHA256

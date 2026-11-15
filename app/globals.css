@@ -638,3 +638,27 @@ label.ccv-line.ccv-pick.on{background:var(--accent-soft)}
 #credit-module .ccv-line:disabled{opacity:.6;cursor:default}
 @media(max-width:760px){.ccv-bulk{margin-right:72px}}
 .ccv-bulk span,.ccv-bulk .btn{white-space:nowrap}
+
+/* Aviso e página do app Android (components/app-download-banner.tsx, app/android) */
+.app-banner{display:flex;align-items:center;gap:12px;max-width:1100px;margin:12px auto 0;padding:12px 14px;border-radius:var(--r-lg);background:var(--brand-deep);color:#f4f3ff;box-shadow:var(--shadow)}
+.app-banner>svg{flex:none;color:var(--coral)}
+.app-banner p{flex:1;margin:0;font-size:var(--t-13);line-height:1.4}
+.app-banner p span{opacity:.85}
+.app-banner-cta{flex:none;display:inline-flex;align-items:center;min-height:var(--h-btn-sm);padding:6px 14px;border-radius:var(--r-md);background:var(--coral);color:#1d1e3a;font-weight:600;font-size:var(--t-13);text-decoration:none}
+.app-banner-cta:hover{filter:brightness(1.05)}
+button.app-banner-close{flex:none;min-height:0;width:32px;height:32px;padding:0;border-radius:var(--r-sm);background:transparent!important;color:#f4f3ff!important}
+button.app-banner-close:hover:not(:disabled){background:#ffffff1f!important;color:#fff!important}
+@media (max-width:420px){.app-banner{margin:8px 8px 0}.app-banner p span{display:none}}
+.app-download{max-width:560px;margin:clamp(20px,6vh,56px) auto 0;padding:28px 24px;display:flex;flex-direction:column;gap:14px}
+.app-download h1{font-size:var(--t-26);text-align:center}
+.app-download h2{margin-top:8px}
+.app-download-lead{color:var(--muted);text-align:center;margin:0}
+.app-download-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:10px 20px;border-radius:var(--r-md);background:var(--accent);color:var(--on-accent);font-weight:600;font-size:var(--t-16);text-decoration:none}
+.app-download-button:hover{background:var(--accent-hover)}
+.app-download-meta{margin:-6px 0 0;text-align:center;color:var(--muted);font-size:var(--t-12)}
+.app-download-steps{margin:0;padding-left:22px;display:grid;gap:10px;list-style:decimal}
+.app-download-steps li{padding-left:4px}
+.app-download-note{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:var(--r-md);background:var(--accent-soft)}
+.app-download-note>svg{flex:none;margin-top:2px;color:var(--accent)}
+.app-download-note p{margin:0;font-size:var(--t-13)}
+.app-download>p>a{color:var(--accent);font-weight:600}
